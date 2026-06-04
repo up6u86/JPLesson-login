@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SandyJP 課程預約系統</title>
+
+  <!-- 1. 引入 React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- 嘗試修復部分 CDN 環境下找不到 React 的問題 -->
+  <script>
+    window.react = window.React;
+  </script>
+
+  <!-- 2. 引入 Babel Standalone 以解析 JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- 3. 引入 Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 4. 引入 Lucide React 圖標庫 -->
+  <script src="https://unpkg.com/lucide-react@0.344.0/dist/umd/lucide-react.min.js"></script>
+
+  <!-- 5. 引入 Firebase Compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-[#f8f7f5] text-stone-800 font-sans antialiased">
+  <!-- React 應用的掛載點 -->
+  <div id="root"></div>
+
+  <!-- 主程式腳本 -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    
+    // ==========================================
+    // 防彈級圖標備用機制 (Fallback)
+    // 確保即使 lucide-react CDN 掛掉，系統也能繼續正常顯示 SVG 圖像，不會崩潰
+    // ==========================================
+    const FallbackIcon = ({ icon, size = 24, className = '', color = 'currentColor' }) => {
+      // 將 PascalCase 轉換為 kebab-case (例如 CalendarPlus -> calendar-plus, Edit2 -> edit-2)
+      const kebabName = icon.replace(/([a-z])([A-Z0-9])/g, '$1-$2').toLowerCase();
+      const url = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${kebabName}.svg`;
+      return (
+        <span
+          className={`inline-block align-middle ${className}`}
+          style={{
+            width: size, 
+            height: size, 
+            backgroundColor: color,
+            mask: `url(${url}) no-repeat center / contain`,
+            WebkitMask: `url(${url}) no-repeat center / contain`
+          }}
+        />
+      );
+    };
+
+    // 安全地取得圖標物件
+    const lucide = window.lucideReact || {};
+    
+    // 將所有需要的圖標安全解構 (若失敗則自動替換為備用 SVG 渲染組件)
+    const CalendarIcon = lucide.Calendar || ((p) => <FallbackIcon icon="Calendar" {...p} />);
+    const User = lucide.User || ((p) => <FallbackIcon icon="User" {...p} />);
+    const Clock = lucide.Clock || ((p) => <FallbackIcon icon="Clock" {...p} />);
+    const Video = lucide.Video || ((p) => <FallbackIcon icon="Video" {...p} />);
+    const BookOpen = lucide.BookOpen || ((p) => <FallbackIcon icon="BookOpen" {...p} />);
+    const Plus = lucide.Plus || ((p) => <FallbackIcon icon="Plus" {...p} />);
+    const RefreshCw = lucide.RefreshCw || ((p) => <FallbackIcon icon="RefreshCw" {...p} />);
+    const ToggleLeft = lucide.ToggleLeft || ((p) => <FallbackIcon icon="ToggleLeft" {...p} />);
+    const ToggleRight = lucide.ToggleRight || ((p) => <FallbackIcon icon="ToggleRight" {...p} />);
+    const Trash2 = lucide.Trash2 || ((p) => <FallbackIcon icon="Trash2" {...p} />);
+    const Edit2 = lucide.Edit2 || ((p) => <FallbackIcon icon="Edit2" {...p} />);
+    const Check = lucide.Check || ((p) => <FallbackIcon icon="Check" {...p} />);
+    const X = lucide.X || ((p) => <FallbackIcon icon="X" {...p} />);
+    const ChevronLeft = lucide.ChevronLeft || ((p) => <FallbackIcon icon="ChevronLeft" {...p} />);
+    const ChevronRight = lucide.ChevronRight || ((p) => <FallbackIcon icon="ChevronRight" {...p} />);
+    const LogOut = lucide.LogOut || ((p) => <FallbackIcon icon="LogOut" {...p} />);
+    const Key = lucide.Key || ((p) => <FallbackIcon icon="Key" {...p} />);
+    const ArrowLeft = lucide.ArrowLeft || ((p) => <FallbackIcon icon="ArrowLeft" {...p} />);
+    const LinkIcon = lucide.Link || ((p) => <FallbackIcon icon="Link" {...p} />);
+    const FileText = lucide.FileText || ((p) => <FallbackIcon icon="FileText" {...p} />);
+    const PenTool = lucide.PenTool || ((p) => <FallbackIcon icon="PenTool" {...p} />);
+    const CheckSquare = lucide.CheckSquare || ((p) => <FallbackIcon icon="CheckSquare" {...p} />);
+    const Mail = lucide.Mail || ((p) => <FallbackIcon icon="Mail" {...p} />);
+    const AlertCircle = lucide.AlertCircle || ((p) => <FallbackIcon icon="AlertCircle" {...p} />);
+    const CalendarPlus = lucide.CalendarPlus || ((p) => <FallbackIcon icon="CalendarPlus" {...p} />);
+
+    // ==========================================
+    // 1. Firebase 初始化與配置
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyB1DtXSgsw90GMpyw-UJzJwZgYPJedo4eI",
+      authDomain: "jplesson-login.firebaseapp.com",
+      databaseURL: "https://jplesson-login-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "jplesson-login",
+      storageBucket: "jplesson-login.firebasestorage.app",
+      messagingSenderId: "961499513747",
+      appId: "1:961499513747:web:1991767008868cb7a55e66",
+      measurementId: "G-J4V0SW3NWW"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const appId = "jplesson-login-data";
+
+    // 輔助函式：取得各資料集合的參照
+    const getUsersRef = () => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('users');
+    const getApptRef = () => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('appointments');
+    const getMatRef = () => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('materials');
+
+    // ==========================================
+    // 2. 共用 UI 元件 (日系清新風格)
+    // ==========================================
+    const Card = ({ children, className = '' }) => (
+      <div className={`bg-white rounded-3xl p-6 shadow-sm border border-stone-100 ${className}`}>
+        {children}
+      </div>
+    );
+
+    const Button = ({ children, onClick, variant = 'primary', disabled = false, type = 'button', className = '' }) => {
+      const baseStyle = "px-6 py-2 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2";
+      const variants = {
+        primary: "bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-stone-300 disabled:cursor-not-allowed",
+        secondary: "bg-stone-100 text-stone-700 hover:bg-stone-200 disabled:opacity-50",
+        danger: "bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50",
+        outline: "border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50 text-sm disabled:opacity-50"
+      };
+      return (
+        <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
+          {children}
+        </button>
+      );
+    };
+
+    // --- 客製化對話框 ---
+    const CustomDialog = ({ isOpen, title, message, isConfirm, onConfirm, onClose }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 bg-stone-900/40 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-stone-800 mb-2">{title}</h3>
+            <p className="text-stone-600 mb-8 whitespace-pre-wrap">{message}</p>
+            <div className="flex gap-3 justify-end">
+              {isConfirm && (
+                <Button variant="secondary" onClick={onClose} className="px-4 py-2 text-sm">取消</Button>
+              )}
+              <Button onClick={() => { if (onConfirm) onConfirm(); onClose(); }} className="px-6 py-2 text-sm">
+                確定
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ==========================================
+    // 3. 主應用程式
+    // ==========================================
+    function App() {
+      const [user, setUser] = useState(null);
+      const [allUsers, setAllUsers] = useState([]);
+      const [appointments, setAppointments] = useState([]);
+      const [materials, setMaterials] = useState([]); 
+      const [loading, setLoading] = useState(true);
+      
+      // 登入狀態
+      const [activeProfileId, setActiveProfileId] = useState(null);
+      const [loginAccount, setLoginAccount] = useState('');
+      const [loginPassword, setLoginPassword] = useState('');
+      const [loginError, setLoginError] = useState(''); 
+
+      // 忘記密碼狀態
+      const [forgotStep, setForgotStep] = useState(0);
+      const [forgotUser, setForgotUser] = useState('');
+      const [forgotEmail, setForgotEmail] = useState('');
+      const [forgotNewPass, setForgotNewPass] = useState('');
+      const [forgotUserId, setForgotUserId] = useState(null);
+
+      // 全域 Dialog 狀態
+      const [dialog, setDialog] = useState({ isOpen: false, title: '', message: '', isConfirm: false, onConfirm: null });
+
+      const showDialog = (title, message) => setDialog({ isOpen: true, title, message, isConfirm: false, onConfirm: null });
+      const showConfirm = (title, message, onConfirm) => setDialog({ isOpen: true, title, message, isConfirm: true, onConfirm });
+      const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
+
+      useEffect(() => {
+        const initAuth = async () => {
+          try {
+            await auth.signInAnonymously();
+          } catch (err) {
+            console.error("Auth Error:", err);
+          }
+        };
+        initAuth();
+
+        const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+          setUser(currentUser);
+          if (!currentUser) setLoading(false);
+        });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!user) return;
+        
+        const unsubUsers = getUsersRef().onSnapshot((snapshot) => {
+          setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setLoading(false);
+        }, (error) => console.error("Users sync error:", error));
+
+        const unsubAppt = getApptRef().onSnapshot((snapshot) => {
+          setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (error) => console.error("Appointments sync error:", error));
+
+        const unsubMat = getMatRef().onSnapshot((snapshot) => {
+          setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (error) => console.error("Materials sync error:", error));
+
+        return () => { unsubUsers(); unsubAppt(); unsubMat(); };
+      }, [user]);
+
+      const profile = allUsers.find(u => u.id === activeProfileId) || null;
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        setLoginError('');
+        const userWithAccount = allUsers.find(u => u.username === loginAccount);
+        if (!userWithAccount) {
+          setLoginError('找不到此登入帳號，請確認是否輸入正確。');
+          return;
+        }
+        if (userWithAccount.password !== loginPassword) {
+          setLoginError('密碼錯誤，請重新輸入。');
+          return;
+        }
+        setActiveProfileId(userWithAccount.id);
+        setLoginAccount('');
+        setLoginPassword('');
+      };
+
+      const handleInitAdmin = async () => {
+        try {
+          await getUsersRef().add({
+            role: 'admin', name: '管理員老師', username: 'admin', password: 'admin', isActivated: true, createdAt: new Date().toISOString()
+          });
+          showDialog('初始化成功', '請使用帳號: admin / 密碼: admin 登入');
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const handleVerifyForgot = (e) => {
+        e.preventDefault();
+        setLoginError('');
+        const matchedUser = allUsers.find(u => u.username === forgotUser && u.email === forgotEmail);
+        if (matchedUser) {
+          setForgotUserId(matchedUser.id);
+          setForgotStep(2);
+        } else {
+          setLoginError('驗證失敗：找不到符合的帳號或 Email。');
+        }
+      };
+
+      const handleResetPassword = async (e) => {
+        e.preventDefault();
+        if (forgotNewPass.length < 6) {
+          setLoginError('密碼長度至少需要 6 個字元。');
+          return;
+        }
+        try {
+          await getUsersRef().doc(forgotUserId).update({ password: forgotNewPass });
+          setForgotStep(0);
+          setForgotUser(''); setForgotEmail(''); setForgotNewPass('');
+          showDialog('重設成功', '您的密碼已成功更新，請使用新密碼登入。');
+        } catch (err) {
+          setLoginError('重設失敗，請稍後再試。');
+        }
+      };
+
+      if (loading) return <div className="min-h-screen flex items-center justify-center text-emerald-600">讀取中...</div>;
+
+      if (!profile) {
+        return (
+          <div className="min-h-screen bg-[#f8f7f5] flex flex-col items-center justify-center p-4">
+            <CustomDialog {...dialog} onClose={closeDialog} />
+            <Card className="max-w-md w-full text-center space-y-8 relative overflow-hidden">
+              <div className="absolute -left-10 -top-10 opacity-5"><BookOpen size={200} /></div>
+              <div className="relative z-10">
+                {forgotStep === 0 ? (
+                  <>
+                    <div className="flex justify-center text-emerald-700 mb-4"><BookOpen size={48} /></div>
+                    <div>
+                      <h1 className="text-2xl font-bold text-stone-800 tracking-wider">SandyJP 課程預約系統</h1>
+                      <p className="text-stone-500 mt-2">請輸入您的帳號與密碼</p>
+                    </div>
+                    
+                    <form onSubmit={handleLogin} className="space-y-4 mt-8">
+                      <div>
+                        <label className="block text-sm text-stone-500 mb-1 text-left font-medium">登入帳號</label>
+                        <div className="relative">
+                          <User size={18} className="absolute left-3 top-3.5 text-stone-400" />
+                          <input type="text" value={loginAccount} onChange={e => { setLoginAccount(e.target.value); setLoginError(''); }} required placeholder="請輸入帳號" className={`w-full pl-10 pr-4 py-3 rounded-xl border bg-stone-50 outline-none transition ${loginError && loginError.includes('帳號') ? 'border-rose-300 focus:ring-2 focus:ring-rose-500' : 'border-stone-200 focus:ring-2 focus:ring-emerald-500'}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm text-stone-500 mb-1 text-left font-medium">密碼</label>
+                        <div className="relative">
+                          <Key size={18} className="absolute left-3 top-3.5 text-stone-400" />
+                          <input type="password" value={loginPassword} onChange={e => { setLoginPassword(e.target.value); setLoginError(''); }} required placeholder="請輸入密碼" className={`w-full pl-10 pr-4 py-3 rounded-xl border bg-stone-50 outline-none transition ${loginError && loginError.includes('密碼') ? 'border-rose-300 focus:ring-2 focus:ring-rose-500' : 'border-stone-200 focus:ring-2 focus:ring-emerald-500'}`} />
+                        </div>
+                      </div>
+                      
+                      {loginError && (
+                        <div className="text-sm font-bold text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-100 flex items-center gap-2 text-left">
+                          <AlertCircle size={16} className="shrink-0"/> {loginError}
+                        </div>
+                      )}
+
+                      <Button type="submit" className="w-full text-lg py-3 mt-2 shadow-md shadow-emerald-600/20">登入系統</Button>
+                    </form>
+                    <div className="mt-4 text-right">
+                      <button onClick={() => { setForgotStep(1); setLoginError(''); }} className="text-sm text-stone-400 hover:text-emerald-600 transition font-medium">忘記密碼？</button>
+                    </div>
+
+                    {allUsers.length === 0 && (
+                      <div className="mt-6 pt-6 border-t border-stone-100">
+                        <p className="text-xs text-rose-500 mb-2">系統偵測到目前尚無任何帳號</p>
+                        <Button onClick={handleInitAdmin} variant="secondary" className="w-full text-sm">初始化系統 (建立預設老師帳號)</Button>
+                      </div>
+                    )}
+                  </>
+                ) : forgotStep === 1 ? (
+                  <div className="animate-in slide-in-from-right-4">
+                    <div className="flex justify-center text-emerald-700 mb-4"><Key size={48} /></div>
+                    <h1 className="text-2xl font-bold text-stone-800 tracking-wider">重設密碼</h1>
+                    <p className="text-stone-500 mt-2 text-sm">請輸入您的帳號與綁定的信箱來進行驗證。</p>
+                    <form onSubmit={handleVerifyForgot} className="space-y-4 mt-6">
+                      <div>
+                        <label className="block text-sm text-stone-500 mb-1 text-left font-medium">登入帳號</label>
+                        <input type="text" value={forgotUser} onChange={e => setForgotUser(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-stone-500 mb-1 text-left font-medium">綁定信箱 (Email)</label>
+                        <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                      {loginError && <div className="text-sm font-bold text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-100 flex items-center gap-2 text-left"><AlertCircle size={16} className="shrink-0"/> {loginError}</div>}
+                      <Button type="submit" className="w-full py-3">驗證身分</Button>
+                      <Button variant="secondary" onClick={() => {setForgotStep(0); setLoginError('');}} className="w-full py-3">返回登入</Button>
+                    </form>
+                  </div>
+                ) : (
+                  <div className="animate-in slide-in-from-right-4">
+                    <div className="flex justify-center text-emerald-700 mb-4"><Check size={48} /></div>
+                    <h1 className="text-2xl font-bold text-stone-800 tracking-wider">身分驗證成功</h1>
+                    <p className="text-stone-500 mt-2 text-sm">請輸入您的一組新密碼。</p>
+                    <form onSubmit={handleResetPassword} className="space-y-4 mt-6">
+                      <div>
+                        <label className="block text-sm text-stone-500 mb-1 text-left font-medium">新密碼</label>
+                        <input type="password" value={forgotNewPass} onChange={e => setForgotNewPass(e.target.value)} required placeholder="至少 6 個字元" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                      {loginError && <div className="text-sm font-bold text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-100 flex items-center gap-2 text-left"><AlertCircle size={16} className="shrink-0"/> {loginError}</div>}
+                      <Button type="submit" className="w-full py-3">更新密碼</Button>
+                      <Button variant="secondary" onClick={() => {setForgotStep(0); setLoginError('');}} className="w-full py-3">取消</Button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      if (profile.role === 'student' && !profile.isActivated) {
+        return (
+          <div className="min-h-screen bg-[#f8f7f5] flex flex-col items-center justify-center p-4">
+            <CustomDialog {...dialog} onClose={closeDialog} />
+            <StudentActivationScreen profile={profile} showDialog={showDialog} getUsersRef={getUsersRef} />
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-[#f8f7f5] text-stone-800 font-sans pb-12 relative">
+          <CustomDialog {...dialog} onClose={closeDialog} />
+
+          <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-stone-100 px-6 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-3 text-emerald-700 font-bold text-xl tracking-wider">
+              <BookOpen size={28} />
+              <span>SandyJP 課程預約系統</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="hidden md:flex items-center gap-2 bg-stone-100 px-3 py-1.5 rounded-full text-sm font-medium text-stone-600">
+                <User size={16} />
+                {profile.role === 'admin' ? '先生 (老師)' : `${profile.name} (學生)`}
+              </div>
+              <button 
+                onClick={() => setActiveProfileId(null)}
+                className="flex items-center gap-1 text-sm text-stone-400 hover:text-rose-600 font-medium transition"
+              >
+                <LogOut size={16} />
+                登出
+              </button>
+            </div>
+          </header>
+
+          <main className="max-w-5xl mx-auto px-4 mt-8">
+            {profile.role === 'admin' ? (
+              <TeacherDashboard profile={profile} users={allUsers} appointments={appointments} materials={materials} showDialog={showDialog} showConfirm={showConfirm} getUsersRef={getUsersRef} getApptRef={getApptRef} getMatRef={getMatRef} />
+            ) : (
+              <StudentDashboard profile={profile} appointments={appointments} materials={materials} showDialog={showDialog} showConfirm={showConfirm} getUsersRef={getUsersRef} getApptRef={getApptRef} />
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 3-1. 學生啟動帳號流程元件
+    // ==========================================
+    function StudentActivationScreen({ profile, showDialog, getUsersRef }) {
+      const [email, setEmail] = useState('');
+      const [newPassword, setNewPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [error, setError] = useState('');
+
+      const handleActivate = async (e) => {
+        e.preventDefault();
+        if (!email.includes('@')) return setError('請輸入有效的 Email 格式。');
+        if (newPassword.length < 6) return setError('密碼長度至少需要 6 個字元。');
+        if (newPassword !== confirmPassword) return setError('兩次輸入的密碼不一致。');
+        
+        try {
+          await getUsersRef().doc(profile.id).update({ email: email, password: newPassword, isActivated: true });
+          showDialog('帳號啟動成功！', '歡迎來到 SandyJP 課程預約系統，您的資料已設定完畢。');
+        } catch (err) {
+          setError('更新失敗，請稍後重試。');
+        }
+      };
+
+      return (
+        <Card className="max-w-md w-full text-center space-y-6 relative overflow-hidden animate-in zoom-in-95">
+          <div className="absolute -right-10 -top-10 opacity-5"><User size={200} /></div>
+          <div className="relative z-10">
+            <h2 className="text-2xl font-bold text-stone-800 tracking-wider">歡迎！初次登入設定</h2>
+            <p className="text-stone-500 mt-2 text-sm text-left">
+              親愛的 <strong>{profile.name}</strong> 同學您好，為了保障您的帳號安全，初次登入請設定專屬的 Email 與新密碼。<br/><br/>
+              *設定完成後，若未來忘記密碼，可使用此 Email 進行重設。
+            </p>
+
+            <form onSubmit={handleActivate} className="space-y-4 mt-6">
+              <div>
+                <label className="block text-sm text-stone-500 mb-1 text-left font-medium">綁定 Email</label>
+                <div className="relative">
+                  <Mail size={18} className="absolute left-3 top-3.5 text-stone-400" />
+                  <input type="email" value={email} onChange={e=>{setEmail(e.target.value); setError('');}} required placeholder="請輸入您的信箱" className="w-full pl-10 pr-4 py-3 rounded-xl border border-stone-200 bg-stone-50 outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-stone-500 mb-1 text-left font-medium">設定新密碼</label>
+                <div className="relative">
+                  <Key size={18} className="absolute left-3 top-3.5 text-stone-400" />
+                  <input type="password" value={newPassword} onChange={e=>{setNewPassword(e.target.value); setError('');}} required placeholder="至少 6 個字元" className="w-full pl-10 pr-4 py-3 rounded-xl border border-stone-200 bg-stone-50 outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-stone-500 mb-1 text-left font-medium">再次確認密碼</label>
+                <div className="relative">
+                  <Check size={18} className="absolute left-3 top-3.5 text-stone-400" />
+                  <input type="password" value={confirmPassword} onChange={e=>{setConfirmPassword(e.target.value); setError('');}} required placeholder="請再次輸入密碼" className="w-full pl-10 pr-4 py-3 rounded-xl border border-stone-200 bg-stone-50 outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
+              {error && <div className="text-sm font-bold text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-100 text-left flex items-center gap-2"><AlertCircle size={16}/> {error}</div>}
+              <Button type="submit" className="w-full text-lg py-3 mt-4">完成啟動並進入教室</Button>
+            </form>
+          </div>
+        </Card>
+      );
+    }
+
+    // ==========================================
+    // 4. 老師後台 (Teacher Dashboard)
+    // ==========================================
+    function TeacherDashboard({ profile, users, appointments, materials, showDialog, showConfirm, getUsersRef, getApptRef, getMatRef }) {
+      const [selectedStudent, setSelectedStudent] = useState('');
+      const [bookDate, setBookDate] = useState('');
+      const [bookTime, setBookTime] = useState('');
+      const [recurringWeeks, setRecurringWeeks] = useState(1);
+      const [editingStudentId, setEditingStudentId] = useState(null);
+      const [editStudentName, setEditStudentName] = useState('');
+      const [showAddForm, setShowAddForm] = useState(false);
+      const [newStudentName, setNewStudentName] = useState('');
+      const [newStudentAccount, setNewStudentAccount] = useState('');
+      const [newStudentPassword, setNewStudentPassword] = useState('');
+      const [filter, setFilter] = useState('day'); 
+      const [selectedDate, setSelectedDate] = useState(new Date());
+      const [viewDate, setViewDate] = useState(new Date());
+      const [showCalendar, setShowCalendar] = useState(false);
+      const [viewingStudentId, setViewingStudentId] = useState(null);
+      const [showAdminPwdForm, setShowAdminPwdForm] = useState(false);
+      const [adminNewPwd, setAdminNewPwd] = useState('');
+      const [adminEmail, setAdminEmail] = useState(profile.email || '');
+      const [showSyncModal, setShowSyncModal] = useState(false);
+
+      const students = users.filter(u => u.role === 'student');
+
+      if (viewingStudentId) {
+        const student = users.find(u => u.id === viewingStudentId);
+        if (student) {
+          return <TeacherStudentDetail student={student} materials={materials} onBack={() => setViewingStudentId(null)} showDialog={showDialog} showConfirm={showConfirm} getMatRef={getMatRef} />;
+        }
+      }
+
+      const handleCopySubscriptionLink = () => {
+        const subscriptionUrl = `https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}&role=admin`;
+        navigator.clipboard.writeText(subscriptionUrl).then(() => {
+          showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
+        }).catch(() => {
+          const textArea = document.createElement("textarea");
+          textArea.value = subscriptionUrl;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("Copy");
+          textArea.remove();
+          showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
+        });
+      };
+
+      const handleExportICS = () => {
+        const futureAppts = appointments.filter(a => a.status === 'booked' && new Date(a.time) > new Date());
+        if (futureAppts.length === 0) {
+          showDialog('無課程', '目前沒有未來的課程可以匯出。');
+          return;
+        }
+        let icsContent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SandyJP Tutor Admin//TW\r\n";
+        futureAppts.forEach(appt => {
+          const startDate = new Date(appt.time);
+          const endDate = new Date(startDate.getTime() + 50 * 60000);
+          const formatICSDate = (date) => date.toISOString().replace(/[-:]|\.\d\d\d/g, '');
+          const link = appt.meetLink || appt.zoomLink || '';
+          icsContent += "BEGIN:VEVENT\r\n";
+          icsContent += `DTSTART:${formatICSDate(startDate)}\r\n`;
+          icsContent += `DTEND:${formatICSDate(endDate)}\r\n`;
+          icsContent += `SUMMARY:【教學】${appt.studentName} 的日文課\r\n`;
+          icsContent += `DESCRIPTION:教室連結：${link}\r\n`;
+          icsContent += "END:VEVENT\r\n";
+        });
+        icsContent += "END:VCALENDAR";
+        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `teaching_schedule_all.ics`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showDialog('匯出成功', '已下載總課表檔案 (.ics)！請直接開啟檔案，系統便會自動將所有未來的課程加入您的日曆中。');
+      };
+
+      const handleAddPackage = async (studentId, amount) => {
+        const student = students.find(s => s.id === studentId);
+        if (!student) return;
+        const newAmount = Math.max(0, (student.remaining_lessons || 0) + amount);
+        await getUsersRef().doc(studentId).update({ remaining_lessons: newAmount });
+      };
+
+      const handleSaveStudentName = async (studentId) => {
+        if (!editStudentName.trim()) return;
+        await getUsersRef().doc(studentId).update({ name: editStudentName.trim() });
+        setEditingStudentId(null);
+      };
+
+      const handleCreateStudent = async (e) => {
+        e.preventDefault();
+        if (!newStudentName || !newStudentAccount || !newStudentPassword) return;
+        if (users.some(u => u.username === newStudentAccount)) {
+          showDialog('帳號重複', '此登入帳號已被使用，請更換一個帳號名稱！');
+          return;
+        }
+        try {
+          await getUsersRef().add({
+            role: 'student', name: newStudentName, username: newStudentAccount, password: newStudentPassword, remaining_lessons: 0, isActivated: false, createdAt: new Date().toISOString()
+          });
+          setNewStudentName(''); setNewStudentAccount(''); setNewStudentPassword(''); setShowAddForm(false);
+          showDialog('建立成功', `已成功為學生「${newStudentName}」建立預設帳號，請將帳密提供給學生進行首次登入啟動。`);
+        } catch (err) {
+          showDialog('錯誤', '建立帳號發生錯誤。');
+        }
+      };
+
+      const handleBookAppointment = async (e) => {
+        e.preventDefault();
+        if (!selectedStudent || !bookDate || !bookTime || recurringWeeks < 1) return;
+        const student = students.find(s => s.id === selectedStudent);
+        if (!student) return;
+        if (student.remaining_lessons < recurringWeeks) {
+          showDialog('堂數不足', `需要 ${recurringWeeks} 堂，但該學生只剩 ${student.remaining_lessons} 堂。`);
+          return;
+        }
+
+        try {
+          const [year, month, day] = bookDate.split('-').map(Number);
+          const [hour, minute] = bookTime.split(':').map(Number);
+          const batchPromises = [];
+          
+          for (let i = 0; i < recurringWeeks; i++) {
+            const classDate = new Date(year, month - 1, day + (i * 7), hour, minute);
+            const y = classDate.getFullYear();
+            const m = String(classDate.getMonth() + 1).padStart(2, '0');
+            const d = String(classDate.getDate()).padStart(2, '0');
+            const h = String(classDate.getHours()).padStart(2, '0');
+            const min = String(classDate.getMinutes()).padStart(2, '0');
+            const dateTimeStr = `${y}-${m}-${d}T${h}:${min}:00`;
+            const realMeetLink = "https://meet.google.com/dos-gqfm-imt";
+
+            batchPromises.push(getApptRef().add({
+              studentId: selectedStudent, studentName: student.name, time: dateTimeStr, meetLink: realMeetLink, status: 'booked', createdAt: new Date().toISOString()
+            }));
+          }
+
+          await Promise.all(batchPromises);
+          await getUsersRef().doc(selectedStudent).update({ remaining_lessons: student.remaining_lessons - recurringWeeks });
+
+          setBookDate(''); setBookTime(''); setRecurringWeeks(1); setSelectedStudent('');
+          showDialog('預約成功', `已成功為學生安排了 ${recurringWeeks} 堂課程！`);
+        } catch (err) {
+          showDialog('錯誤', '預約發生錯誤，請稍後再試。');
+        }
+      };
+
+      const handleUpdateAdminPwd = async (e) => {
+        e.preventDefault();
+        if (adminNewPwd && adminNewPwd.length < 6) {
+          showDialog('錯誤', '密碼長度至少需要 6 個字元。');
+          return;
+        }
+        if (!adminEmail.includes('@')) {
+          showDialog('錯誤', '請輸入有效的備用信箱格式。');
+          return;
+        }
+        try {
+          const updates = { email: adminEmail };
+          if (adminNewPwd) updates.password = adminNewPwd; 
+          await getUsersRef().doc(profile.id).update(updates);
+          setShowAdminPwdForm(false);
+          setAdminNewPwd('');
+          showDialog('設定成功', '管理員安全設定已更新！若未來忘記密碼，可使用此備用信箱進行重設。');
+        } catch (err) {
+          showDialog('錯誤', '設定更新失敗，請稍後重試。');
+        }
+      };
+
+      const handleCancel = async (appt) => {
+        showConfirm('取消預約', '確定要取消學生的這堂課嗎？', async () => {
+          await getApptRef().doc(appt.id).update({ status: 'cancelled' });
+          const student = students.find(s => s.id === appt.studentId);
+          if (student) {
+            await getUsersRef().doc(appt.studentId).update({ remaining_lessons: student.remaining_lessons + 1 });
+          }
+          showDialog('取消成功', '已取消預約並退還學生堂數。');
+        });
+      };
+
+      const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+      const getWeekRange = (date) => {
+        const d = new Date(date);
+        const start = new Date(d);
+        start.setDate(d.getDate() - d.getDay()); start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+        return {start, end};
+      };
+
+      const filteredAppointments = appointments.filter(a => {
+        if (a.status !== 'booked') return false;
+        const d = new Date(a.time);
+        if (filter === 'day') return isSameDay(d, selectedDate);
+        if (filter === 'week') {
+          const {start, end} = getWeekRange(selectedDate);
+          return d >= start && d <= end;
+        }
+        if (filter === 'month') return d.getFullYear() === selectedDate.getFullYear() && d.getMonth() === selectedDate.getMonth();
+        return true;
+      }).sort((a,b) => new Date(a.time) - new Date(b.time));
+
+      return (
+        <div className="space-y-8 animate-in fade-in duration-500">
+          <div className="flex justify-between items-end">
+            <div>
+              <h2 className="text-3xl font-bold text-stone-800">先生、お疲れ様です！</h2>
+              <p className="text-stone-500 mt-2">這裡是您的後台管理系統</p>
+            </div>
+            <Button onClick={() => setShowAdminPwdForm(true)} variant="outline" className="text-xs bg-white">
+              <Key size={14} /> 帳號安全設定
+            </Button>
+          </div>
+
+          {showAdminPwdForm && (
+            <div className="fixed inset-0 bg-stone-900/40 z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
+                <h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center gap-2"><Key className="text-emerald-600"/> 帳號安全設定</h3>
+                <form onSubmit={handleUpdateAdminPwd} className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-stone-600 mb-1">綁定備用信箱 (忘記密碼用)</label>
+                    <input type="email" value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} required className="w-full p-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="輸入您的 Email"/>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-stone-600 mb-1">新密碼 (若不修改請留空)</label>
+                    <input type="text" value={adminNewPwd} onChange={e=>setAdminNewPwd(e.target.value)} minLength={6} className="w-full p-2.5 rounded-xl border border-stone-200 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="至少 6 個字元"/>
+                  </div>
+                  <div className="flex gap-3 justify-end mt-6">
+                    <Button variant="secondary" onClick={() => setShowAdminPwdForm(false)} className="px-4 py-2 text-sm">取消</Button>
+                    <Button type="submit" className="px-6 py-2 text-sm">儲存設定</Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1 space-y-6">
+              <Card>
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-stone-700">
+                  <CalendarIcon className="text-emerald-600" /> 手動幫學生預約
+                </h3>
+                <form onSubmit={handleBookAppointment} className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-stone-500 mb-1">選擇學生</label>
+                    <select value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)} required className="w-full p-3 rounded-xl border border-stone-200 bg-stone-50 focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer">
+                      <option value="">請選擇...</option>
+                      {students.map(s => <option key={s.id} value={s.id} disabled={s.remaining_lessons <= 0}>{s.name} (剩餘: {s.remaining_lessons} 堂)</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div>
+                      <label className="block text-sm text-stone-500 mb-1">首次上課日期</label>
+                      <input type="date" value={bookDate} onChange={e => setBookDate(e.target.value)} required className="w-full p-3 rounded-xl border border-stone-200 bg-stone-50 cursor-pointer focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm text-stone-500 mb-1">時間 (24h)</label>
+                        <select value={bookTime} onChange={(e) => setBookTime(e.target.value)} required className="w-full p-3 rounded-xl border border-stone-200 bg-stone-50 cursor-pointer outline-none">
+                          <option value="">選擇整點</option>
+                          {Array.from({ length: 24 }).map((_, i) => <option key={i} value={`${String(i).padStart(2,'0')}:00`}>{String(i).padStart(2,'0')}:00</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm text-stone-500 mb-1">連排週數</label>
+                        <select value={recurringWeeks} onChange={(e) => setRecurringWeeks(Number(e.target.value))} required className="w-full p-3 rounded-xl border border-stone-200 bg-stone-50 cursor-pointer outline-none">
+                          {Array.from({length: 20}, (_, i) => i + 1).map(w => <option key={w} value={w}>{w === 1 ? '排 1 堂' : `連排 ${w} 週`}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <Button type="submit" className="w-full" disabled={!selectedStudent || students.find(s=>s.id===selectedStudent)?.remaining_lessons < recurringWeeks}>
+                    確認預約並發送 Google Meet 連結
+                  </Button>
+                </form>
+              </Card>
+
+              <Card>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-bold flex items-center gap-2 text-stone-700">
+                    <User className="text-emerald-600" /> 學生管理
+                  </h3>
+                  <button onClick={() => setShowAddForm(!showAddForm)} className={`p-2 rounded-lg transition ${showAddForm ? 'bg-emerald-100 text-emerald-700' : 'text-stone-400 hover:text-emerald-600 bg-stone-100'}`}>
+                    {showAddForm ? <X size={16} /> : <Plus size={16} />}
+                  </button>
+                </div>
+
+                {showAddForm && (
+                  <form onSubmit={handleCreateStudent} className="mb-6 p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 space-y-3">
+                    <h4 className="text-sm font-bold text-emerald-800 mb-2">建立新學生帳號</h4>
+                    <input type="text" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="學生姓名" required className="w-full p-2 text-sm rounded-lg border border-emerald-200 outline-none" />
+                    <input type="text" value={newStudentAccount} onChange={e => setNewStudentAccount(e.target.value)} placeholder="設定登入帳號" required className="w-full p-2 text-sm rounded-lg border border-emerald-200 outline-none" />
+                    <input type="text" value={newStudentPassword} onChange={e => setNewStudentPassword(e.target.value)} placeholder="設定預設密碼" required className="w-full p-2 text-sm rounded-lg border border-emerald-200 outline-none" />
+                    <Button type="submit" className="w-full text-sm py-2">確認建立帳號</Button>
+                  </form>
+                )}
+
+                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                  {students.length === 0 ? <p className="text-stone-400 text-sm text-center py-4">目前無學生資料</p> : null}
+                  {students.map(s => (
+                    <div key={s.id} className="p-4 bg-white rounded-2xl flex flex-col gap-3 border border-stone-100 shadow-sm relative group">
+                      <div className="flex justify-between items-start border-b border-stone-100 pb-3">
+                        <div className="flex-1">
+                          {editingStudentId === s.id ? (
+                            <div className="flex items-center gap-2 w-full mr-2 mb-1">
+                              <input type="text" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="flex-1 px-2 py-1 border border-emerald-300 rounded outline-none" autoFocus />
+                              <button onClick={() => handleSaveStudentName(s.id)} className="p-1 text-emerald-600 bg-emerald-50 rounded"><Check size={16}/></button>
+                              <button onClick={() => setEditingStudentId(null)} className="p-1 text-rose-500 bg-rose-50 rounded"><X size={16}/></button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-stone-800 text-lg">{s.name}</span>
+                              {!s.isActivated && <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold">未啟動</span>}
+                              <button onClick={() => { setEditingStudentId(s.id); setEditStudentName(s.name); }} className="text-stone-300 hover:text-stone-500 transition p-1"><Edit2 size={14} /></button>
+                              <button onClick={() => setViewingStudentId(s.id)} className="text-xs ml-2 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 transition whitespace-nowrap">進入專屬頁面 &rarr;</button>
+                            </div>
+                          )}
+                          <div className="text-xs text-stone-500 bg-stone-50 p-2 rounded-lg border border-stone-100 mt-1 inline-block">
+                            <span className="text-stone-400">帳號:</span> <span className="font-mono text-stone-700 font-medium">{s.username}</span> <br/>
+                            <span className="text-stone-400">密碼:</span> <span className="font-mono text-stone-700 font-medium">{s.password}</span>
+                          </div>
+                        </div>
+                        {editingStudentId !== s.id && (
+                          <span className={`px-2 py-1 rounded-md text-xs font-bold whitespace-nowrap ml-2 ${s.remaining_lessons > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>剩 {s.remaining_lessons} 堂</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        <Button onClick={() => handleAddPackage(s.id, -1)} variant="secondary" disabled={s.remaining_lessons <= 0} className="text-xs py-1.5 px-0">- 1</Button>
+                        <Button onClick={() => handleAddPackage(s.id, 1)} variant="secondary" className="text-xs py-1.5 px-0">+ 1</Button>
+                        <Button onClick={() => handleAddPackage(s.id, 5)} variant="secondary" className="text-xs py-1.5 px-0">+ 5</Button>
+                        <Button onClick={() => handleAddPackage(s.id, 10)} variant="secondary" className="text-xs py-1.5 px-0">+ 10</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-2">
+              <Card className="h-full relative">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                  <h3 className="text-xl font-bold flex items-center gap-2 text-stone-700 whitespace-nowrap">
+                    <Clock className="text-emerald-600" /> 每日總課表
+                    <span className="text-sm font-normal text-stone-500 ml-2 hidden lg:inline-block">
+                      ({filter === 'day' ? '當天' : filter === 'week' ? '當週' : '當月'} - {selectedDate.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })})
+                    </span>
+                  </h3>
+                  
+                  <div className="flex items-center gap-2 sm:gap-4 relative w-full sm:w-auto justify-between sm:justify-end">
+                    <Button onClick={() => setShowSyncModal(true)} variant="outline" className="px-3 py-1.5 text-xs bg-white shadow-sm flex-shrink-0">
+                      <CalendarPlus size={14} /> 總課表同步
+                    </Button>
+
+                    <div className="flex items-center gap-2 relative">
+                      <div className="flex bg-stone-100 rounded-lg p-1">
+                        <button onClick={() => { setFilter('day'); setSelectedDate(new Date()); setViewDate(new Date()); }} className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-md transition ${filter === 'day' ? 'bg-white shadow-sm font-bold text-emerald-700' : 'text-stone-500 hover:text-stone-700'}`}>當天</button>
+                        <button onClick={() => setFilter('week')} className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-md transition ${filter === 'week' ? 'bg-white shadow-sm font-bold text-emerald-700' : 'text-stone-500 hover:text-stone-700'}`}>當週</button>
+                        <button onClick={() => setFilter('month')} className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-md transition ${filter === 'month' ? 'bg-white shadow-sm font-bold text-emerald-700' : 'text-stone-500 hover:text-stone-700'}`}>當月</button>
+                      </div>
+                      <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 bg-stone-100 text-stone-600 hover:text-emerald-600 rounded-lg transition"><CalendarIcon size={20} /></button>
+
+                      {showCalendar && (
+                        <div className="absolute top-full right-0 mt-2 p-4 bg-white border border-stone-200 shadow-xl rounded-2xl z-50 w-72">
+                          <div className="flex justify-between items-center mb-4">
+                            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronLeft size={18}/></button>
+                            <span className="font-bold text-stone-700">{viewDate.getFullYear()}年 {viewDate.getMonth() + 1}月</span>
+                            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronRight size={18}/></button>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                            {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-stone-400">{d}</div>)}
+                          </div>
+                          <div className="grid grid-cols-7 gap-1 text-center">
+                            {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
+                            {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+                              const d = i + 1;
+                              const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                              const hasAppt = appointments.some(a => a.status === 'booked' && a.time.startsWith(currentDateStr));
+                              const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
+
+                              return (
+                                <button key={d} onClick={() => { setSelectedDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), d)); setFilter('day'); setShowCalendar(false); }} className={`w-8 h-8 mx-auto flex items-center justify-center rounded-full text-sm transition ${isSelected ? 'ring-2 ring-emerald-500' : ''} ${hasAppt ? 'text-emerald-700 font-bold bg-emerald-100' : 'text-stone-700 hover:bg-stone-100'}`}>
+                                  {d}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {filteredAppointments.length === 0 ? (
+                    <div className="text-center py-10 text-stone-400">目前選擇的區間沒有課程</div>
+                  ) : (
+                    filteredAppointments.map(appt => {
+                      const dateObj = new Date(appt.time);
+                      return (
+                        <div key={appt.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white border border-stone-200 rounded-2xl shadow-sm hover:shadow-md transition">
+                          <div className="flex items-center gap-4 mb-4 sm:mb-0">
+                            <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl text-center min-w-[70px]">
+                              <div className="text-xs font-bold uppercase">{dateObj.toLocaleDateString('en-US', { weekday: 'short'})}</div>
+                              <div className="text-xl font-black">{dateObj.getDate()}</div>
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-lg text-stone-800">{appt.studentName}</h4>
+                              <div className="flex items-center gap-3 text-stone-500 text-sm mt-1">
+                                <span className="flex items-center gap-1"><Clock size={14} /> {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                <span className="flex items-center gap-1 text-emerald-600"><Video size={14} /> Meet 已生成</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="danger" onClick={() => handleCancel(appt)} className="px-3">
+                              <Trash2 size={16} /> 取消
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
+            </div>
+          </div>
+
+          {showSyncModal && (
+            <div className="fixed inset-0 bg-stone-900/40 z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95">
+                <h3 className="text-xl font-bold text-stone-800 mb-2 flex items-center gap-2">
+                  <CalendarPlus className="text-emerald-600" /> 總課表同步中心 (老師專用)
+                </h3>
+                <p className="text-stone-500 mb-6 text-sm">請選擇您偏好的同步方式，系統將為您匯出<strong className="text-emerald-700">「所有學生」</strong>的課程。</p>
+                
+                <div className="space-y-4">
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">推薦</span>
+                      <h4 className="font-bold text-emerald-800">方法一：訂閱自動同步日曆</h4>
+                    </div>
+                    <p className="text-xs text-emerald-700 mb-3">
+                      透過專屬網址訂閱，未來所有新增或取消的課程，都會在您的手機與電腦上自動更新。
+                    </p>
+                    <div className="flex gap-2 mb-3">
+                      <input 
+                        type="text" readOnly 
+                        value={`https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}&role=admin`} 
+                        className="flex-1 text-xs px-3 py-2 rounded-lg border border-emerald-200 bg-white text-stone-500 outline-none" 
+                      />
+                      <Button onClick={handleCopySubscriptionLink} className="text-xs py-1.5 px-4 whitespace-nowrap">複製網址</Button>
+                    </div>
+                    
+                    <details className="group">
+                      <summary className="text-xs font-bold text-emerald-700 cursor-pointer list-none flex items-center gap-1 hover:text-emerald-800 transition select-none">
+                        <span className="group-open:rotate-90 transition-transform duration-200">▶</span>
+                        點我看詳細設定教學（Google / Apple 日曆）
+                      </summary>
+                      <div className="mt-3 text-xs text-emerald-800 space-y-4 bg-emerald-100/50 p-4 rounded-xl">
+                        <div>
+                          <div className="font-bold mb-1.5 text-emerald-900 border-b border-emerald-200/50 pb-1">📅 Google 日曆 (建議先用電腦操作)</div>
+                          <ol className="list-decimal list-inside space-y-1 text-emerald-700">
+                            <li>開啟電腦版 Google 日曆。</li>
+                            <li>在左側清單找到「其他日曆」，點擊旁邊的 <span className="font-bold">+</span> 號。</li>
+                            <li>選擇「<span className="font-bold">加入日曆網址</span>」。</li>
+                            <li>貼上剛剛複製的網址，點擊「<span className="font-bold">新增日曆</span>」。</li>
+                          </ol>
+                        </div>
+                        <div>
+                          <div className="font-bold mb-1.5 text-emerald-900 border-b border-emerald-200/50 pb-1">🍎 Apple 行事曆 (iPhone / iPad)</div>
+                          <ol className="list-decimal list-inside space-y-1 text-emerald-700">
+                            <li>進入手機的「<span className="font-bold">設定</span>」&gt;「<span className="font-bold">行事曆</span>」&gt;「<span className="font-bold">帳號</span>」。</li>
+                            <li>點選「加入帳號」&gt;「其他」&gt;「<span className="font-bold">加入訂閱的行事曆</span>」。</li>
+                            <li>在「伺服器」欄位貼上網址，點選「下一步」儲存。</li>
+                          </ol>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+
+                  <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl">
+                    <h4 className="font-bold text-stone-700 mb-2">方法二：下載靜態課表 (.ics)</h4>
+                    <p className="text-xs text-stone-500 mb-3">
+                      一次性將目前所有的排課匯入行事曆。若後續有課程取消或改期，您需手動於行事曆中刪除。
+                    </p>
+                    <Button onClick={handleExportICS} variant="secondary" className="w-full text-xs py-2 bg-white border border-stone-200 hover:bg-stone-100">
+                      下載全部課程 (.ics)
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end mt-6">
+                  <Button variant="secondary" onClick={() => setShowSyncModal(false)} className="px-6 py-2 text-sm">關閉</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 4-1. 老師專用：特定學生詳細管理頁面
+    // ==========================================
+    function TeacherStudentDetail({ student, materials, onBack, showDialog, showConfirm, getMatRef }) {
+      const [matType, setMatType] = useState('教材'); 
+      const [matTitle, setMatTitle] = useState('');
+      const [matUrl, setMatUrl] = useState('');
+      const [matDeadline, setMatDeadline] = useState(''); 
+      const [activeTab, setActiveTab] = useState('教材');
+
+      const myMaterials = materials
+        .filter(m => m.studentId === student.id)
+        .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      const filteredMaterials = myMaterials.filter(m => m.type === activeTab);
+
+      const handleAddMaterial = async (e) => {
+        e.preventDefault();
+        if (!matTitle || !matUrl) return;
+        try {
+          await getMatRef().add({
+            studentId: student.id, type: matType, title: matTitle, url: matUrl,
+            deadline: (matType === '作業' || matType === '測驗') ? matDeadline : '', 
+            createdAt: new Date().toISOString()
+          });
+          setMatTitle(''); setMatUrl(''); setMatDeadline('');
+          setActiveTab(matType); 
+          showDialog('發送成功', `已將${matType}資源發送給學生。`);
+        } catch (err) {
+          showDialog('發送失敗', '新增資源時發生錯誤，請稍後再試。');
+        }
+      };
+
+      const handleDeleteMaterial = async (id) => {
+        showConfirm('刪除資源', '確定要刪除此學習連結嗎？', async () => {
+          await getMatRef().doc(id).delete();
+        });
+      };
+
+      const getIconForType = (type) => {
+        if (type === '作業') return <PenTool size={18} className="text-amber-500" />;
+        if (type === '測驗') return <CheckSquare size={18} className="text-rose-500" />;
+        return <FileText size={18} className="text-blue-500" />;
+      };
+
+      return (
+        <div className="space-y-6 animate-in slide-in-from-right-8 duration-300">
+          <button onClick={onBack} className="flex items-center gap-2 text-stone-500 hover:text-emerald-700 transition font-bold mb-4">
+            <ArrowLeft size={20} /> 返回學生列表
+          </button>
+
+          <div className="flex items-end justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-stone-800 flex items-center gap-3">
+                {student.name} <span className="text-lg font-normal text-stone-500">的專屬管理頁面</span>
+              </h2>
+              <p className="text-stone-500 mt-2">剩餘堂數：<span className="font-bold text-emerald-600">{student.remaining_lessons}</span> 堂</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="md:col-span-1 h-fit border-emerald-200 bg-emerald-50/30">
+              <h3 className="text-lg font-bold mb-4 text-emerald-800 flex items-center gap-2">
+                <LinkIcon size={20} /> 新增學習連結
+              </h3>
+              <form onSubmit={handleAddMaterial} className="space-y-4">
+                <div>
+                  <label className="block text-sm text-stone-600 mb-1">類型</label>
+                  <select value={matType} onChange={e=>setMatType(e.target.value)} className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option value="教材">📚 教材 (Textbook)</option>
+                    <option value="作業">📝 作業 (Homework)</option>
+                    <option value="測驗">💯 測驗 (Quiz)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-stone-600 mb-1">標題 / 說明</label>
+                  <input type="text" value={matTitle} onChange={e=>setMatTitle(e.target.value)} required placeholder="例如：第12課 單字練習" className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                <div>
+                  <label className="block text-sm text-stone-600 mb-1">連結網址 (URL)</label>
+                  <input type="url" value={matUrl} onChange={e=>setMatUrl(e.target.value)} required placeholder="https://..." className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                
+                {(matType === '作業' || matType === '測驗') && (
+                  <div className="animate-in fade-in slide-in-from-top-1">
+                    <label className="block text-sm text-stone-600 mb-1">期限 (選填)</label>
+                    <input type="date" value={matDeadline} onChange={e=>setMatDeadline(e.target.value)} className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                )}
+                
+                <Button type="submit" className="w-full shadow-sm">發送給學生</Button>
+              </form>
+            </Card>
+
+            <Card className="md:col-span-2">
+              <h3 className="text-xl font-bold mb-4 text-stone-700 flex items-center gap-2">
+                <BookOpen size={20} className="text-emerald-600"/> 學習資源履歷
+              </h3>
+              
+              <div className="flex gap-2 border-b border-stone-100 mb-6">
+                {['教材', '作業', '測驗'].map(tab => (
+                  <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-1.5 px-4 py-2.5 font-bold transition-all border-b-2 ${activeTab === tab ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-stone-400 hover:text-stone-600'}`}>
+                    {tab === '教材' && <FileText size={16}/>}
+                    {tab === '作業' && <PenTool size={16}/>}
+                    {tab === '測驗' && <CheckSquare size={16}/>}
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                {filteredMaterials.length === 0 ? (
+                  <p className="text-stone-400 text-center py-10">目前尚無{activeTab}發送紀錄</p>
+                ) : (
+                  filteredMaterials.map(mat => (
+                    <div key={mat.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-stone-50 border border-stone-100 rounded-2xl hover:border-emerald-200 transition gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-white rounded-lg shadow-sm">
+                          {getIconForType(mat.type)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-stone-800">{mat.title}</h4>
+                          <div className="text-xs text-stone-400 mt-1">
+                            建立於 {new Date(mat.createdAt).toLocaleDateString('zh-TW')}
+                          </div>
+                          {mat.deadline && (
+                            <div className="text-xs text-rose-500 font-bold mt-1 flex items-center gap-1">
+                              <Clock size={12} /> 期限：{new Date(mat.deadline).toLocaleDateString('zh-TW')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a href={mat.url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-white border border-stone-200 text-stone-600 hover:text-emerald-600 hover:border-emerald-300 rounded-xl text-sm font-medium transition">
+                          開啟連結
+                        </a>
+                        <button onClick={() => handleDeleteMaterial(mat.id)} className="p-2 text-stone-400 hover:text-rose-500 bg-white border border-stone-200 rounded-xl transition">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 5. 學生首頁 (Student Dashboard)
+    // ==========================================
+    function StudentDashboard({ profile, appointments, materials, showDialog, showConfirm, getUsersRef, getApptRef }) {
+      const [now, setNow] = useState(new Date());
+      const [filter, setFilter] = useState('week'); 
+      const [selectedDate, setSelectedDate] = useState(new Date());
+      const [viewDate, setViewDate] = useState(new Date());
+      const [showCalendar, setShowCalendar] = useState(false);
+      const [activeTab, setActiveTab] = useState('教材');
+      const [showSyncModal, setShowSyncModal] = useState(false);
+
+      useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 60000);
+        return () => clearInterval(timer);
+      }, []);
+
+      const myAppointments = appointments
+        .filter(a => a.studentId === profile.id && a.status === 'booked')
+        .sort((a,b) => new Date(a.time) - new Date(b.time));
+
+      const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+      const getWeekRange = (date) => {
+        const d = new Date(date);
+        const start = new Date(d);
+        start.setDate(d.getDate() - d.getDay()); start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+        return {start, end};
+      };
+
+      const filteredMyAppointments = myAppointments.filter(a => {
+        const d = new Date(a.time);
+        if (filter === 'day') return isSameDay(d, selectedDate);
+        if (filter === 'week') {
+          const {start, end} = getWeekRange(selectedDate);
+          return d >= start && d <= end;
+        }
+        if (filter === 'month') return d.getFullYear() === selectedDate.getFullYear() && d.getMonth() === selectedDate.getMonth();
+        return true;
+      });
+
+      const historyAppointments = appointments
+        .filter(a => a.studentId === profile.id && a.status === 'cancelled')
+        .sort((a,b) => new Date(b.time) - new Date(a.time));
+
+      const myMaterials = materials
+        .filter(m => m.studentId === profile.id)
+        .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      const filteredMaterials = myMaterials.filter(m => m.type === activeTab);
+
+      const nextClass = myAppointments.find(a => new Date(a.time) > new Date(now.getTime() - 50 * 60000)); 
+
+      const handleCopySubscriptionLink = () => {
+        const subscriptionUrl = `https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}`;
+        navigator.clipboard.writeText(subscriptionUrl).then(() => {
+          showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
+        }).catch(() => {
+          const textArea = document.createElement("textarea");
+          textArea.value = subscriptionUrl;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("Copy");
+          textArea.remove();
+          showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
+        });
+      };
+
+      const handleExportICS = () => {
+        const futureAppts = myAppointments.filter(a => new Date(a.time) > new Date());
+        if (futureAppts.length === 0) {
+          showDialog('無課程', '目前沒有未來的課程可以匯出。');
+          return;
+        }
+        let icsContent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SandyJP Tutor//TW\r\n";
+        futureAppts.forEach(appt => {
+          const startDate = new Date(appt.time);
+          const endDate = new Date(startDate.getTime() + 50 * 60000);
+          const formatICSDate = (date) => date.toISOString().replace(/[-:]|\.\d\d\d/g, '');
+          const link = appt.meetLink || appt.zoomLink || '';
+          icsContent += "BEGIN:VEVENT\r\n";
+          icsContent += `DTSTART:${formatICSDate(startDate)}\r\n`;
+          icsContent += `DTEND:${formatICSDate(endDate)}\r\n`;
+          icsContent += `SUMMARY:【SandyJP】${profile.name}的家教課\r\n`;
+          icsContent += `DESCRIPTION:您的日文課要開始囉！\\nGoogle Meet 教室連結：${link}\r\n`;
+          icsContent += "END:VEVENT\r\n";
+        });
+        icsContent += "END:VCALENDAR";
+        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sandyjp_classes_${profile.name}.ics`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showDialog('匯出成功', '已下載課表檔案 (.ics)！請直接開啟檔案，系統便會自動將所有未來的課程加入您的 Google 或 Apple 日曆中。');
+      };
+
+      const handleCancel = async (appt) => {
+        showConfirm('取消預約', '確定要取消這堂課嗎？堂數將自動退還。', async () => {
+          await getApptRef().doc(appt.id).update({ status: 'cancelled' });
+          await getUsersRef().doc(profile.id).update({ remaining_lessons: profile.remaining_lessons + 1 });
+          showDialog('取消成功', '已成功取消預約，堂數已退還。');
+        });
+      };
+
+      const getGreeting = () => {
+        const hour = now.getHours();
+        if (hour >= 4 && hour < 10) return 'おはようございます';
+        if (hour >= 10 && hour < 17) return 'こんにちは';
+        return 'こんばんは';
+      };
+
+      const getIconForType = (type) => {
+        if (type === '作業') return <PenTool size={18} className="text-amber-500" />;
+        if (type === '測驗') return <CheckSquare size={18} className="text-rose-500" />;
+        return <FileText size={18} className="text-blue-500" />;
+      };
+
+      return (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex justify-between items-end">
+            <div>
+              <h2 className="text-3xl font-bold text-stone-800">
+                {getGreeting()}、<span className="text-emerald-700">{profile.name}</span> さん！
+              </h2>
+              <p className="text-stone-500 mt-2">今天想學習些什麼呢？</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="bg-emerald-50 border border-emerald-200 md:col-span-1 relative overflow-hidden shadow-sm">
+              <div className="absolute -right-6 -top-6 opacity-10 text-emerald-600">
+                <BookOpen size={120} />
+              </div>
+              <div className="relative z-10">
+                <p className="text-emerald-800 font-bold mb-1">總剩餘堂數</p>
+                <div className="text-5xl font-black text-emerald-700 mb-4">
+                  {profile.remaining_lessons} <span className="text-lg font-medium text-emerald-600">堂</span>
+                </div>
+                <p className="text-xs text-emerald-600 font-medium">
+                  * 取消預約會即時自動退還堂數。<br/>若需購買新課程，請聯繫老師。
+                </p>
+              </div>
+            </Card>
+
+            <Card className="md:col-span-2 flex flex-col justify-center">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-bold flex items-center gap-2 text-stone-700">
+                  <Clock className="text-emerald-600" /> 下次上課時間
+                </h3>
+                <div className="flex items-center gap-4">
+                  <Button onClick={() => setShowSyncModal(true)} variant="outline" className="px-4 py-1.5 text-xs bg-white shadow-sm">
+                    <CalendarPlus size={14} /> 行事曆同步設定
+                  </Button>
+                </div>
+              </div>
+              
+              {nextClass ? (
+                <div className="bg-stone-50 p-6 rounded-2xl border border-stone-200">
+                  <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                    <div>
+                      <div className="text-2xl font-black text-stone-800 tracking-wide">
+                        {new Date(nextClass.time).toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'long' })}
+                      </div>
+                      <div className="text-lg font-medium text-emerald-700 mt-1">
+                        {new Date(nextClass.time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })} ~ {new Date(new Date(nextClass.time).getTime() + 50*60000).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                    {(() => {
+                      const classTime = new Date(nextClass.time).getTime();
+                      const diffMinutes = (classTime - now.getTime()) / 60000;
+                      if (diffMinutes <= 10 && diffMinutes >= -50) {
+                        return (
+                          <Button onClick={() => window.open(nextClass.meetLink || nextClass.zoomLink, '_blank')} className="animate-pulse shadow-lg shadow-emerald-500/30 text-lg px-8 py-3">
+                            <Video size={20} /> 進入教室 (Meet)
+                          </Button>
+                        );
+                      } else {
+                        return (
+                          <div className="text-center px-6 py-3 bg-white rounded-xl border border-stone-200 shadow-sm">
+                            <p className="text-xs text-stone-400 mb-1">開課前10分鐘開放進入</p>
+                            <p className="font-bold text-stone-700">尚未開放</p>
+                          </div>
+                        );
+                      }
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-stone-400 bg-stone-50 rounded-2xl border border-stone-100 border-dashed">
+                  目前沒有即將到來的課程。<br/>老師會幫您安排後續時間。
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="lg:col-span-2">
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-stone-700">
+                <LinkIcon className="text-emerald-600" /> 學習資源與紀錄
+              </h3>
+              <div className="flex gap-2 border-b border-stone-100 mb-6">
+                {['教材', '作業', '測驗'].map(tab => (
+                  <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-1.5 px-4 py-2.5 font-bold transition-all border-b-2 ${activeTab === tab ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-stone-400 hover:text-stone-600'}`}>
+                    {tab === '教材' && <FileText size={16}/>}
+                    {tab === '作業' && <PenTool size={16}/>}
+                    {tab === '測驗' && <CheckSquare size={16}/>}
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
+                {filteredMaterials.length === 0 ? (
+                  <div className="col-span-full text-center py-8 text-stone-400 bg-stone-50 rounded-2xl border border-stone-100 border-dashed">
+                    目前尚無{activeTab}資源。
+                  </div>
+                ) : (
+                  filteredMaterials.map(mat => (
+                    <a key={mat.id} href={mat.url} target="_blank" rel="noreferrer" className={`flex items-start gap-4 p-4 bg-white border border-stone-200 rounded-2xl shadow-sm hover:shadow-md transition group ${mat.type === '教材' ? 'hover:border-blue-300' : mat.type === '作業' ? 'hover:border-amber-300' : 'hover:border-rose-300'}`}>
+                      <div className={`p-3 rounded-xl transition ${mat.type === '教材' ? 'bg-blue-50 group-hover:bg-blue-100' : mat.type === '作業' ? 'bg-amber-50 group-hover:bg-amber-100' : 'bg-rose-50 group-hover:bg-rose-100'}`}>
+                        {getIconForType(mat.type)}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-stone-800 text-sm line-clamp-2">{mat.title}</h4>
+                        <div className="text-xs text-stone-400 mt-2">
+                          {new Date(mat.createdAt).toLocaleDateString('zh-TW')}
+                        </div>
+                        {mat.deadline && (
+                          <div className="text-xs text-rose-500 font-bold mt-1.5 flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-md w-fit">
+                            <Clock size={12} /> 期限：{new Date(mat.deadline).toLocaleDateString('zh-TW')}
+                          </div>
+                        )}
+                      </div>
+                    </a>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            <Card className="relative">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <h3 className="text-xl font-bold flex items-center gap-2 text-stone-700">
+                  <CalendarIcon className="text-emerald-600" /> 我的課表
+                  <span className="text-sm font-normal text-stone-500 ml-2">
+                    ({filter === 'day' ? '當天' : filter === 'week' ? '當週' : '當月'} - {selectedDate.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })})
+                  </span>
+                </h3>
+                <div className="flex items-center gap-2 relative">
+                  <div className="flex bg-stone-100 rounded-lg p-1">
+                    <button onClick={() => { setFilter('day'); setSelectedDate(new Date()); setViewDate(new Date()); }} className={`px-3 py-1 text-sm rounded-md transition ${filter === 'day' ? 'bg-white shadow-sm font-bold text-emerald-700' : 'text-stone-500 hover:text-stone-700'}`}>當天</button>
+                    <button onClick={() => setFilter('week')} className={`px-3 py-1 text-sm rounded-md transition ${filter === 'week' ? 'bg-white shadow-sm font-bold text-emerald-700' : 'text-stone-500 hover:text-stone-700'}`}>當週</button>
+                    <button onClick={() => setFilter('month')} className={`px-3 py-1 text-sm rounded-md transition ${filter === 'month' ? 'bg-white shadow-sm font-bold text-emerald-700' : 'text-stone-500 hover:text-stone-700'}`}>當月</button>
+                  </div>
+                  <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 bg-stone-100 text-stone-600 hover:text-emerald-600 rounded-lg transition"><CalendarIcon size={20} /></button>
+
+                  {showCalendar && (
+                    <div className="absolute bottom-full mb-2 right-0 p-4 bg-white border border-stone-200 shadow-xl rounded-2xl z-50 w-72">
+                      <div className="flex justify-between items-center mb-4">
+                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronLeft size={18}/></button>
+                        <span className="font-bold text-stone-700">{viewDate.getFullYear()}年 {viewDate.getMonth() + 1}月</span>
+                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronRight size={18}/></button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                        {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-stone-400">{d}</div>)}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center">
+                        {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
+                        {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+                          const d = i + 1;
+                          const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                          const hasAppt = myAppointments.some(a => a.time.startsWith(currentDateStr));
+                          const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
+
+                          return (
+                            <button key={d} onClick={() => { setSelectedDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), d)); setFilter('day'); setShowCalendar(false); }} className={`w-8 h-8 mx-auto flex items-center justify-center rounded-full text-sm transition ${isSelected ? 'ring-2 ring-emerald-500' : ''} ${hasAppt ? 'text-emerald-700 font-bold bg-emerald-100 hover:bg-emerald-200' : 'text-stone-700 hover:bg-stone-100'}`}>
+                              {d}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                {filteredMyAppointments.length === 0 ? (
+                  <p className="text-stone-400 text-sm">此區間暫無預約</p>
+                ) : (
+                  filteredMyAppointments.map(appt => (
+                    <div key={appt.id} className="flex justify-between items-center p-4 bg-stone-50 rounded-2xl border border-stone-100 hover:border-emerald-200 transition">
+                      <div>
+                        <div className="font-bold text-stone-800">
+                          {new Date(appt.time).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric'})} ({new Date(appt.time).toLocaleDateString('zh-TW', { weekday: 'short'})})
+                        </div>
+                        <div className="text-stone-500 text-sm flex items-center gap-1 mt-1">
+                          <Clock size={14} /> {new Date(appt.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (50分)
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="danger" onClick={() => handleCancel(appt)} className="text-xs px-3 py-1.5 h-auto">
+                          取消預約
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {showSyncModal && (
+              <div className="fixed inset-0 bg-stone-900/40 z-[100] flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95">
+                  <h3 className="text-xl font-bold text-stone-800 mb-2 flex items-center gap-2">
+                    <CalendarPlus className="text-emerald-600" /> 行事曆同步中心
+                  </h3>
+                  <p className="text-stone-500 mb-6 text-sm">請選擇您偏好的同步方式：</p>
+                  
+                  <div className="space-y-4">
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">推薦</span>
+                        <h4 className="font-bold text-emerald-800">方法一：訂閱自動同步日曆</h4>
+                      </div>
+                      <p className="text-xs text-emerald-700 mb-3">
+                        透過專屬網址訂閱，未來所有新增或「取消」的課程，都會在您的手機與電腦上自動更新（無需手動刪除）。
+                      </p>
+                      <div className="flex gap-2 mb-3">
+                        <input 
+                          type="text" 
+                          readOnly 
+                          value={`https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}`} 
+                          className="flex-1 text-xs px-3 py-2 rounded-lg border border-emerald-200 bg-white text-stone-500 outline-none" 
+                        />
+                        <Button onClick={handleCopySubscriptionLink} className="text-xs py-1.5 px-4 whitespace-nowrap">複製網址</Button>
+                      </div>
+                      
+                      <details className="group">
+                        <summary className="text-xs font-bold text-emerald-700 cursor-pointer list-none flex items-center gap-1 hover:text-emerald-800 transition select-none">
+                          <span className="group-open:rotate-90 transition-transform duration-200">▶</span>
+                          點我看詳細設定教學（Google / Apple 日曆）
+                        </summary>
+                        <div className="mt-3 text-xs text-emerald-800 space-y-4 bg-emerald-100/50 p-4 rounded-xl">
+                          <div>
+                            <div className="font-bold mb-1.5 text-emerald-900 border-b border-emerald-200/50 pb-1">📅 Google 日曆 (建議先用電腦操作)</div>
+                            <ol className="list-decimal list-inside space-y-1 text-emerald-700">
+                              <li>開啟電腦版 Google 日曆。</li>
+                              <li>在左側清單找到「其他日曆」，點擊旁邊的 <span className="font-bold">+</span> 號。</li>
+                              <li>選擇「<span className="font-bold">加入日曆網址</span>」。</li>
+                              <li>貼上剛剛複製的網址，點擊「<span className="font-bold">新增日曆</span>」。</li>
+                              <li className="text-emerald-600/80">※ 設定完成後，您的手機版 Google 日曆 App 就會自動同步這些課程。</li>
+                            </ol>
+                          </div>
+                          <div>
+                            <div className="font-bold mb-1.5 text-emerald-900 border-b border-emerald-200/50 pb-1">🍎 Apple 行事曆 (iPhone / iPad)</div>
+                            <ol className="list-decimal list-inside space-y-1 text-emerald-700">
+                              <li>進入手機的「<span className="font-bold">設定</span>」&gt;「<span className="font-bold">行事曆</span>」&gt;「<span className="font-bold">帳號</span>」。</li>
+                              <li>點選「加入帳號」&gt;「其他」&gt;「<span className="font-bold">加入訂閱的行事曆</span>」。</li>
+                              <li>在「伺服器」欄位貼上網址，點選「下一步」。</li>
+                              <li>最後點選「儲存」即可完成訂閱！</li>
+                            </ol>
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+
+                    <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl">
+                      <h4 className="font-bold text-stone-700 mb-2">方法二：下載靜態課表 (.ics)</h4>
+                      <p className="text-xs text-stone-500 mb-3">
+                        一次性將目前的所有排課匯入行事曆。若後續有課程取消或改期，您需手動於行事曆中刪除該事件。
+                      </p>
+                      <Button onClick={handleExportICS} variant="secondary" className="w-full text-xs py-2 bg-white border border-stone-200 hover:bg-stone-100">
+                        下載全部課程 (.ics)
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end mt-6">
+                    <Button variant="secondary" onClick={() => setShowSyncModal(false)} className="px-6 py-2 text-sm">關閉</Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Card>
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-stone-700">
+                <RefreshCw className="text-stone-400" /> 取消紀錄
+              </h3>
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                {historyAppointments.length === 0 ? (
+                  <p className="text-stone-400 text-sm">無歷史紀錄</p>
+                ) : (
+                  historyAppointments.map(appt => (
+                    <div key={appt.id} className="flex justify-between items-center p-3 opacity-60 bg-stone-50 rounded-xl">
+                      <div className="text-sm">
+                        <span className="line-through text-stone-500">{new Date(appt.time).toLocaleString('zh-TW')}</span>
+                      </div>
+                      <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-1 rounded-md">已取消</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // 將 App 渲染到畫面上
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
