@@ -41,7 +41,7 @@
     // 確保即使 lucide-react CDN 掛掉，系統也能繼續正常顯示 SVG 圖像，不會崩潰
     // ==========================================
     const FallbackIcon = ({ icon, size = 24, className = '', color = 'currentColor' }) => {
-      // 將 PascalCase 轉換為 kebab-case (例如 CalendarPlus -> calendar-plus, Edit2 -> edit-2)
+      // 將 PascalCase 轉換為 kebab-case
       const kebabName = icon.replace(/([a-z])([A-Z0-9])/g, '$1-$2').toLowerCase();
       const url = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${kebabName}.svg`;
       return (
@@ -61,7 +61,7 @@
     // 安全地取得圖標物件
     const lucide = window.lucideReact || {};
     
-    // 將所有需要的圖標安全解構 (若失敗則自動替換為備用 SVG 渲染組件)
+    // 將所有需要的圖標安全解構
     const CalendarIcon = lucide.Calendar || ((p) => <FallbackIcon icon="Calendar" {...p} />);
     const User = lucide.User || ((p) => <FallbackIcon icon="User" {...p} />);
     const Clock = lucide.Clock || ((p) => <FallbackIcon icon="Clock" {...p} />);
@@ -530,7 +530,8 @@
       }
 
       const handleCopySubscriptionLink = () => {
-        const subscriptionUrl = `https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}&role=admin`;
+        // 🔥 更新了您的專屬後端網址 (老師端)
+        const subscriptionUrl = `https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&role=admin`;
         navigator.clipboard.writeText(subscriptionUrl).then(() => {
           showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
         }).catch(() => {
@@ -947,7 +948,7 @@
                     <div className="flex gap-2 mb-3">
                       <input 
                         type="text" readOnly 
-                        value={`https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}&role=admin`} 
+                        value={`https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&role=admin`} 
                         className="flex-1 text-xs px-3 py-2 rounded-lg border border-emerald-200 bg-white text-stone-500 outline-none" 
                       />
                       <Button onClick={handleCopySubscriptionLink} className="text-xs py-1.5 px-4 whitespace-nowrap">複製網址</Button>
@@ -1207,7 +1208,8 @@
       const nextClass = myAppointments.find(a => new Date(a.time) > new Date(now.getTime() - 50 * 60000)); 
 
       const handleCopySubscriptionLink = () => {
-        const subscriptionUrl = `https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}`;
+        // 🔥 更新了您的專屬後端網址 (學生端)
+        const subscriptionUrl = `https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}`;
         navigator.clipboard.writeText(subscriptionUrl).then(() => {
           showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
         }).catch(() => {
@@ -1486,7 +1488,7 @@
                         <input 
                           type="text" 
                           readOnly 
-                          value={`https://us-central1-the12weekyear.cloudfunctions.net/exportCalendar?user=${profile.id}`} 
+                          value={`https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}`} 
                           className="flex-1 text-xs px-3 py-2 rounded-lg border border-emerald-200 bg-white text-stone-500 outline-none" 
                         />
                         <Button onClick={handleCopySubscriptionLink} className="text-xs py-1.5 px-4 whitespace-nowrap">複製網址</Button>
