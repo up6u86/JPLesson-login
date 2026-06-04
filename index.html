@@ -530,8 +530,8 @@
       }
 
       const handleCopySubscriptionLink = () => {
-        // 🔥 更新了您的專屬後端網址 (老師端)
-        const subscriptionUrl = `https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&role=admin`;
+        // 🔥 更新了您的專屬後端網址 (老師端)，加入 t 參數強制 Google 抓取最新資料
+        const subscriptionUrl = `https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&role=admin&t=${Date.now()}`;
         navigator.clipboard.writeText(subscriptionUrl).then(() => {
           showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
         }).catch(() => {
@@ -588,6 +588,17 @@
         if (!editStudentName.trim()) return;
         await getUsersRef().doc(studentId).update({ name: editStudentName.trim() });
         setEditingStudentId(null);
+      };
+
+      const handleDeleteStudent = (studentId, studentName) => {
+        showConfirm('刪除學生', `確定要刪除「${studentName}」嗎？\n⚠️ 注意：此操作無法復原，且該學生將無法再登入系統。`, async () => {
+          try {
+            await getUsersRef().doc(studentId).delete();
+            showDialog('刪除成功', `已成功刪除學生「${studentName}」。`);
+          } catch (err) {
+            showDialog('錯誤', '刪除學生失敗，請稍後再試。');
+          }
+        });
       };
 
       const handleCreateStudent = async (e) => {
@@ -815,6 +826,7 @@
                               <span className="font-bold text-stone-800 text-lg">{s.name}</span>
                               {!s.isActivated && <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold">未啟動</span>}
                               <button onClick={() => { setEditingStudentId(s.id); setEditStudentName(s.name); }} className="text-stone-300 hover:text-stone-500 transition p-1"><Edit2 size={14} /></button>
+                              <button onClick={() => handleDeleteStudent(s.id, s.name)} className="text-stone-300 hover:text-rose-500 transition p-1"><Trash2 size={14} /></button>
                               <button onClick={() => setViewingStudentId(s.id)} className="text-xs ml-2 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 transition whitespace-nowrap">進入專屬頁面 &rarr;</button>
                             </div>
                           )}
@@ -948,7 +960,7 @@
                     <div className="flex gap-2 mb-3">
                       <input 
                         type="text" readOnly 
-                        value={`https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&role=admin`} 
+                        value={`https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&role=admin&t=${Date.now()}`} 
                         className="flex-1 text-xs px-3 py-2 rounded-lg border border-emerald-200 bg-white text-stone-500 outline-none" 
                       />
                       <Button onClick={handleCopySubscriptionLink} className="text-xs py-1.5 px-4 whitespace-nowrap">複製網址</Button>
@@ -1208,17 +1220,9 @@
       const nextClass = myAppointments.find(a => new Date(a.time) > new Date(now.getTime() - 50 * 60000)); 
 
       const handleCopySubscriptionLink = () => {
-        // 🔥 更新了您的專屬後端網址 (學生端)
-        const subscriptionUrl = `https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}`;
+        // 🔥 更新了您的專屬後端網址 (學生端)，加入 t 參數強制 Google 抓取最新資料
+        const subscriptionUrl = `https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&t=${Date.now()}`;
         navigator.clipboard.writeText(subscriptionUrl).then(() => {
-          showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
-        }).catch(() => {
-          const textArea = document.createElement("textarea");
-          textArea.value = subscriptionUrl;
-          document.body.appendChild(textArea);
-          textArea.select();
-          document.execCommand("Copy");
-          textArea.remove();
           showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
         });
       };
@@ -1488,7 +1492,7 @@
                         <input 
                           type="text" 
                           readOnly 
-                          value={`https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}`} 
+                          value={`https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&t=${Date.now()}`} 
                           className="flex-1 text-xs px-3 py-2 rounded-lg border border-emerald-200 bg-white text-stone-500 outline-none" 
                         />
                         <Button onClick={handleCopySubscriptionLink} className="text-xs py-1.5 px-4 whitespace-nowrap">複製網址</Button>
