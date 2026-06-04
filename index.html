@@ -170,8 +170,8 @@
       const [materials, setMaterials] = useState([]); 
       const [loading, setLoading] = useState(true);
       
-      // 登入狀態
-      const [activeProfileId, setActiveProfileId] = useState(null);
+      // 登入狀態 (加入 localStorage 紀錄以維持登入)
+      const [activeProfileId, setActiveProfileId] = useState(localStorage.getItem('sandyjp_activeUser') || null);
       const [loginAccount, setLoginAccount] = useState('');
       const [loginPassword, setLoginPassword] = useState('');
       const [loginError, setLoginError] = useState(''); 
@@ -228,6 +228,14 @@
 
       const profile = allUsers.find(u => u.id === activeProfileId) || null;
 
+      // 若找不到該帳號但有存檔，清除無效登入狀態
+      useEffect(() => {
+        if (!loading && activeProfileId && !profile) {
+          localStorage.removeItem('sandyjp_activeUser');
+          setActiveProfileId(null);
+        }
+      }, [loading, activeProfileId, profile]);
+
       const handleLogin = (e) => {
         e.preventDefault();
         setLoginError('');
@@ -241,6 +249,7 @@
           return;
         }
         setActiveProfileId(userWithAccount.id);
+        localStorage.setItem('sandyjp_activeUser', userWithAccount.id); // 記住登入狀態
         setLoginAccount('');
         setLoginPassword('');
       };
@@ -401,7 +410,10 @@
                 {profile.role === 'admin' ? '先生 (老師)' : `${profile.name} (學生)`}
               </div>
               <button 
-                onClick={() => setActiveProfileId(null)}
+                onClick={() => {
+                  setActiveProfileId(null);
+                  localStorage.removeItem('sandyjp_activeUser'); // 登出時清除紀錄
+                }}
                 className="flex items-center gap-1 text-sm text-stone-400 hover:text-rose-600 font-medium transition"
               >
                 <LogOut size={16} />
