@@ -405,16 +405,12 @@
               <span>SandyJP 課程預約系統</span>
             </div>
             <div className="flex items-center gap-4">
-              <div className="hidden md:flex items-center gap-2 bg-stone-100 px-3 py-1.5 rounded-full text-sm font-medium text-stone-600">
-                <User size={16} />
-                {profile.role === 'admin' ? '先生 (老師)' : `${profile.name} (學生)`}
-              </div>
               <button 
                 onClick={() => {
                   setActiveProfileId(null);
                   localStorage.removeItem('sandyjp_activeUser'); // 登出時清除紀錄
                 }}
-                className="flex items-center gap-1 text-sm text-stone-400 hover:text-rose-600 font-medium transition"
+                className="flex items-center gap-1 text-sm text-stone-400 hover:text-rose-600 font-medium transition ml-auto"
               >
                 <LogOut size={16} />
                 登出
@@ -522,10 +518,17 @@
 
       const students = users.filter(u => u.role === 'student');
 
+      const handleAddPackage = async (studentId, amount) => {
+        const student = students.find(s => s.id === studentId);
+        if (!student) return;
+        const newAmount = Math.max(0, (student.remaining_lessons || 0) + amount);
+        await getUsersRef().doc(studentId).update({ remaining_lessons: newAmount });
+      };
+
       if (viewingStudentId) {
         const student = users.find(u => u.id === viewingStudentId);
         if (student) {
-          return <TeacherStudentDetail student={student} materials={materials} onBack={() => setViewingStudentId(null)} showDialog={showDialog} showConfirm={showConfirm} getMatRef={getMatRef} />;
+          return <TeacherStudentDetail student={student} materials={materials} onBack={() => setViewingStudentId(null)} showDialog={showDialog} showConfirm={showConfirm} getMatRef={getMatRef} onAddPackage={handleAddPackage} />;
         }
       }
 
@@ -575,13 +578,6 @@
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
         showDialog('匯出成功', '已下載總課表檔案 (.ics)！請直接開啟檔案，系統便會自動將所有未來的課程加入您的日曆中。');
-      };
-
-      const handleAddPackage = async (studentId, amount) => {
-        const student = students.find(s => s.id === studentId);
-        if (!student) return;
-        const newAmount = Math.max(0, (student.remaining_lessons || 0) + amount);
-        await getUsersRef().doc(studentId).update({ remaining_lessons: newAmount });
       };
 
       const handleSaveStudentName = async (studentId) => {
@@ -716,14 +712,14 @@
 
       return (
         <div className="space-y-8 animate-in fade-in duration-500">
-          <div className="flex justify-between items-end">
-            <div>
-              <h2 className="text-3xl font-bold text-stone-800">先生、お疲れ様です！</h2>
-              <p className="text-stone-500 mt-2">這裡是您的後台管理系統</p>
+          <div>
+            <h2 className="text-3xl font-bold text-stone-800">先生、お疲れ様です！</h2>
+            <div className="flex items-center gap-4 mt-2">
+              <p className="text-stone-500">這裡是您的後台管理系統</p>
+              <Button onClick={() => setShowAdminPwdForm(true)} variant="outline" className="text-xs bg-white py-1 px-3">
+                <Key size={12} /> 帳號安全設定
+              </Button>
             </div>
-            <Button onClick={() => setShowAdminPwdForm(true)} variant="outline" className="text-xs bg-white">
-              <Key size={14} /> 帳號安全設定
-            </Button>
           </div>
 
           {showAdminPwdForm && (
@@ -778,13 +774,14 @@
                       <div>
                         <label className="block text-sm text-stone-500 mb-1">連排週數</label>
                         <select value={recurringWeeks} onChange={(e) => setRecurringWeeks(Number(e.target.value))} required className="w-full p-3 rounded-xl border border-stone-200 bg-stone-50 cursor-pointer outline-none">
+                          <option value="">請選擇</option>
                           {Array.from({length: 20}, (_, i) => i + 1).map(w => <option key={w} value={w}>{w === 1 ? '排 1 堂' : `連排 ${w} 週`}</option>)}
                         </select>
                       </div>
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={!selectedStudent || students.find(s=>s.id===selectedStudent)?.remaining_lessons < recurringWeeks}>
-                    確認預約並發送 Google Meet 連結
+                    確認預約並發送 Meet 連結
                   </Button>
                 </form>
               </Card>
@@ -809,42 +806,30 @@
                   </form>
                 )}
 
-                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
                   {students.length === 0 ? <p className="text-stone-400 text-sm text-center py-4">目前無學生資料</p> : null}
                   {students.map(s => (
-                    <div key={s.id} className="p-4 bg-white rounded-2xl flex flex-col gap-3 border border-stone-100 shadow-sm relative group">
-                      <div className="flex justify-between items-start border-b border-stone-100 pb-3">
-                        <div className="flex-1">
-                          {editingStudentId === s.id ? (
-                            <div className="flex items-center gap-2 w-full mr-2 mb-1">
-                              <input type="text" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="flex-1 px-2 py-1 border border-emerald-300 rounded outline-none" autoFocus />
-                              <button onClick={() => handleSaveStudentName(s.id)} className="p-1 text-emerald-600 bg-emerald-50 rounded"><Check size={16}/></button>
-                              <button onClick={() => setEditingStudentId(null)} className="p-1 text-rose-500 bg-rose-50 rounded"><X size={16}/></button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-bold text-stone-800 text-lg">{s.name}</span>
-                              {!s.isActivated && <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold">未啟動</span>}
-                              <button onClick={() => { setEditingStudentId(s.id); setEditStudentName(s.name); }} className="text-stone-300 hover:text-stone-500 transition p-1"><Edit2 size={14} /></button>
-                              <button onClick={() => handleDeleteStudent(s.id, s.name)} className="text-stone-300 hover:text-rose-500 transition p-1"><Trash2 size={14} /></button>
-                              <button onClick={() => setViewingStudentId(s.id)} className="text-xs ml-2 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 transition whitespace-nowrap">進入專屬頁面 &rarr;</button>
-                            </div>
-                          )}
-                          <div className="text-xs text-stone-500 bg-stone-50 p-2 rounded-lg border border-stone-100 mt-1 inline-block">
-                            <span className="text-stone-400">帳號:</span> <span className="font-mono text-stone-700 font-medium">{s.username}</span> <br/>
-                            <span className="text-stone-400">密碼:</span> <span className="font-mono text-stone-700 font-medium">{s.password}</span>
+                    <div key={s.id} className="p-3 bg-white rounded-xl flex items-center justify-between border border-stone-100 shadow-sm relative group">
+                      <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                        {!s.isActivated && <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold shrink-0">未</span>}
+                        {editingStudentId === s.id ? (
+                          <div className="flex items-center gap-1 w-full flex-1">
+                            <input type="text" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="w-full px-2 py-1 text-sm border border-emerald-300 rounded outline-none" autoFocus />
+                            <button onClick={() => handleSaveStudentName(s.id)} className="p-1 text-emerald-600 bg-emerald-50 rounded"><Check size={14}/></button>
+                            <button onClick={() => setEditingStudentId(null)} className="p-1 text-rose-500 bg-rose-50 rounded"><X size={14}/></button>
                           </div>
-                        </div>
-                        {editingStudentId !== s.id && (
-                          <span className={`px-2 py-1 rounded-md text-xs font-bold whitespace-nowrap ml-2 ${s.remaining_lessons > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>剩 {s.remaining_lessons} 堂</span>
+                        ) : (
+                          <span className="font-bold text-stone-800 text-base truncate">{s.name}</span>
                         )}
                       </div>
-                      <div className="grid grid-cols-4 gap-2">
-                        <Button onClick={() => handleAddPackage(s.id, -1)} variant="secondary" disabled={s.remaining_lessons <= 0} className="text-xs py-1.5 px-0">- 1</Button>
-                        <Button onClick={() => handleAddPackage(s.id, 1)} variant="secondary" className="text-xs py-1.5 px-0">+ 1</Button>
-                        <Button onClick={() => handleAddPackage(s.id, 5)} variant="secondary" className="text-xs py-1.5 px-0">+ 5</Button>
-                        <Button onClick={() => handleAddPackage(s.id, 10)} variant="secondary" className="text-xs py-1.5 px-0">+ 10</Button>
-                      </div>
+                      
+                      {editingStudentId !== s.id && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => { setEditingStudentId(s.id); setEditStudentName(s.name); }} className="text-stone-300 hover:text-stone-500 transition p-1"><Edit2 size={14} /></button>
+                          <button onClick={() => handleDeleteStudent(s.id, s.name)} className="text-stone-300 hover:text-rose-500 transition p-1"><Trash2 size={14} /></button>
+                          <button onClick={() => setViewingStudentId(s.id)} className="text-[10px] ml-1 text-emerald-600 bg-emerald-50 px-2 py-1.5 rounded-md hover:bg-emerald-100 transition font-medium whitespace-nowrap">進入專屬頁面 &rarr;</button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -853,12 +838,9 @@
 
             <div className="lg:col-span-2">
               <Card className="h-full relative">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-stone-100 pb-4">
                   <h3 className="text-xl font-bold flex items-center gap-2 text-stone-700 whitespace-nowrap">
                     <Clock className="text-emerald-600" /> 每日總課表
-                    <span className="text-sm font-normal text-stone-500 ml-2 hidden lg:inline-block">
-                      ({filter === 'day' ? '當天' : filter === 'week' ? '當週' : '當月'} - {selectedDate.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })})
-                    </span>
                   </h3>
                   
                   <div className="flex items-center gap-2 sm:gap-4 relative w-full sm:w-auto justify-between sm:justify-end">
@@ -905,35 +887,33 @@
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div>
                   {filteredAppointments.length === 0 ? (
                     <div className="text-center py-10 text-stone-400">目前選擇的區間沒有課程</div>
                   ) : (
-                    filteredAppointments.map(appt => {
-                      const dateObj = new Date(appt.time);
-                      return (
-                        <div key={appt.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white border border-stone-200 rounded-2xl shadow-sm hover:shadow-md transition">
-                          <div className="flex items-center gap-4 mb-4 sm:mb-0">
-                            <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl text-center min-w-[70px]">
-                              <div className="text-xs font-bold uppercase">{dateObj.toLocaleDateString('en-US', { weekday: 'short'})}</div>
-                              <div className="text-xl font-black">{dateObj.getDate()}</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+                      {filteredAppointments.map(appt => {
+                        const dateObj = new Date(appt.time);
+                        return (
+                          <div key={appt.id} className="flex items-center p-3 bg-white border border-stone-100 rounded-2xl shadow-sm hover:border-emerald-200 transition gap-3">
+                            <div className="bg-emerald-50 text-emerald-700 w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0">
+                              <div className="text-[10px] font-bold uppercase tracking-wider">{dateObj.toLocaleDateString('en-US', { weekday: 'short'})}</div>
+                              <div className="text-xl font-black leading-tight">{dateObj.getDate()}</div>
                             </div>
-                            <div>
-                              <h4 className="font-bold text-lg text-stone-800">{appt.studentName}</h4>
-                              <div className="flex items-center gap-3 text-stone-500 text-sm mt-1">
-                                <span className="flex items-center gap-1"><Clock size={14} /> {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                <span className="flex items-center gap-1 text-emerald-600"><Video size={14} /> Meet 已生成</span>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-stone-800 text-sm truncate">{appt.studentName}</h4>
+                              <div className="text-stone-500 text-xs mt-1 flex items-center gap-1 font-medium">
+                                <Clock size={12} /> {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                               </div>
                             </div>
+                            <button onClick={() => handleCancel(appt)} className="text-rose-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-xl transition flex flex-col items-center justify-center flex-shrink-0">
+                              <Trash2 size={16} />
+                              <span className="text-[10px] mt-1 font-bold">取消</span>
+                            </button>
                           </div>
-                          <div className="flex gap-2">
-                            <Button variant="danger" onClick={() => handleCancel(appt)} className="px-3">
-                              <Trash2 size={16} /> 取消
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </Card>
@@ -1018,7 +998,7 @@
     // ==========================================
     // 4-1. 老師專用：特定學生詳細管理頁面
     // ==========================================
-    function TeacherStudentDetail({ student, materials, onBack, showDialog, showConfirm, getMatRef }) {
+    function TeacherStudentDetail({ student, materials, onBack, showDialog, showConfirm, getMatRef, onAddPackage }) {
       const [matType, setMatType] = useState('教材'); 
       const [matTitle, setMatTitle] = useState('');
       const [matUrl, setMatUrl] = useState('');
@@ -1062,20 +1042,36 @@
 
       return (
         <div className="space-y-6 animate-in slide-in-from-right-8 duration-300">
-          <button onClick={onBack} className="flex items-center gap-2 text-stone-500 hover:text-emerald-700 transition font-bold mb-4">
+          <button onClick={onBack} className="flex items-center gap-2 text-stone-500 hover:text-emerald-700 transition font-bold mb-2">
             <ArrowLeft size={20} /> 返回學生列表
           </button>
 
-          <div className="flex items-end justify-between">
+          {/* 頂部詳細資訊與堂數操作區 */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-stone-200 pb-6">
             <div>
               <h2 className="text-3xl font-bold text-stone-800 flex items-center gap-3">
                 {student.name} <span className="text-lg font-normal text-stone-500">的專屬管理頁面</span>
               </h2>
-              <p className="text-stone-500 mt-2">剩餘堂數：<span className="font-bold text-emerald-600">{student.remaining_lessons}</span> 堂</p>
+              <div className="text-stone-500 mt-3 flex items-center gap-2">
+                剩餘堂數：<span className="font-bold text-emerald-600 text-xl">{student.remaining_lessons}</span> 堂
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+              <div className="text-xs text-stone-500 bg-stone-50 p-2.5 rounded-xl w-full md:w-auto flex flex-col md:flex-row gap-2 md:gap-6 border border-stone-200">
+                <div><span className="text-stone-400">登入帳號: </span> <span className="font-mono font-bold text-stone-700 ml-1">{student.username}</span></div>
+                <div><span className="text-stone-400">登入密碼: </span> <span className="font-mono font-bold text-stone-700 ml-1">{student.password}</span></div>
+              </div>
+              <div className="flex gap-2 w-full justify-between md:justify-end">
+                <Button onClick={() => onAddPackage(student.id, -1)} variant="secondary" disabled={student.remaining_lessons <= 0} className="text-xs py-1.5 flex-1 md:w-16 md:flex-none bg-white border border-stone-200 shadow-sm">- 1</Button>
+                <Button onClick={() => onAddPackage(student.id, 1)} variant="secondary" className="text-xs py-1.5 flex-1 md:w-16 md:flex-none bg-white border border-stone-200 shadow-sm">+ 1</Button>
+                <Button onClick={() => onAddPackage(student.id, 5)} variant="secondary" className="text-xs py-1.5 flex-1 md:w-16 md:flex-none bg-white border border-stone-200 shadow-sm">+ 5</Button>
+                <Button onClick={() => onAddPackage(student.id, 10)} variant="secondary" className="text-xs py-1.5 flex-1 md:w-16 md:flex-none bg-white border border-stone-200 shadow-sm">+ 10</Button>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
             <Card className="md:col-span-1 h-fit border-emerald-200 bg-emerald-50/30">
               <h3 className="text-lg font-bold mb-4 text-emerald-800 flex items-center gap-2">
                 <LinkIcon size={20} /> 新增學習連結
@@ -1284,8 +1280,9 @@
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex justify-between items-end">
             <div>
-              <h2 className="text-3xl font-bold text-stone-800">
-                {getGreeting()}、<span className="text-emerald-700">{profile.name}</span> さん！
+              <h2 className="text-3xl font-bold text-stone-800 leading-tight">
+                {getGreeting()}、<br/>
+                <span className="text-emerald-700">{profile.name}</span> さん！
               </h2>
               <p className="text-stone-500 mt-2">今天想學習些什麼呢？</p>
             </div>
