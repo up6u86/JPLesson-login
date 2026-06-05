@@ -496,6 +496,7 @@
     // 4. 老師後台 (Teacher Dashboard)
     // ==========================================
     function TeacherDashboard({ profile, users, appointments, materials, showDialog, showConfirm, getUsersRef, getApptRef, getMatRef }) {
+      const [now, setNow] = useState(new Date()); // 新增：老師端也自動更新時間，用於即時判定課程是否結束
       const [selectedStudent, setSelectedStudent] = useState('');
       const [bookDate, setBookDate] = useState('');
       const [bookTime, setBookTime] = useState('');
@@ -515,6 +516,12 @@
       const [adminNewPwd, setAdminNewPwd] = useState('');
       const [adminEmail, setAdminEmail] = useState(profile.email || '');
       const [showSyncModal, setShowSyncModal] = useState(false);
+
+      // 自動更新時間
+      useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 60000);
+        return () => clearInterval(timer);
+      }, []);
 
       const students = users.filter(u => u.role === 'student');
 
@@ -549,7 +556,7 @@
       };
 
       const handleExportICS = () => {
-        const futureAppts = appointments.filter(a => a.status === 'booked' && new Date(a.time) > new Date());
+        const futureAppts = appointments.filter(a => ['booked', 'reported_issue'].includes(a.status) && new Date(a.time) > new Date());
         if (futureAppts.length === 0) {
           showDialog('無課程', '目前沒有未來的課程可以匯出。');
           return;
@@ -677,15 +684,21 @@
         }
       };
 
+      // 老師端處理：取消 / 請假 (會退還堂數)
       const handleCancel = async (appt) => {
-        showConfirm('取消預約', '確定要取消學生的這堂課嗎？', async () => {
+        showConfirm('取消 / 請假', '確定要將此課程標記為取消/請假，並將堂數退還給學生嗎？', async () => {
           await getApptRef().doc(appt.id).update({ status: 'cancelled' });
           const student = students.find(s => s.id === appt.studentId);
           if (student) {
             await getUsersRef().doc(appt.studentId).update({ remaining_lessons: student.remaining_lessons + 1 });
           }
-          showDialog('取消成功', '已取消預約並退還學生堂數。');
+          showDialog('處理成功', '已取消課程並退還堂數給學生。');
         });
+      };
+
+      // 老師端處理：手動標記已完成 (不退堂數)
+      const handleComplete = async (apptId) => {
+        await getApptRef().doc(apptId).update({ status: 'completed' });
       };
 
       const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
@@ -698,8 +711,9 @@
         return {start, end};
       };
 
+      // 過濾出包含 已預約(booked)、已回報(reported_issue) 以及 已完成(completed) 的課程
       const filteredAppointments = appointments.filter(a => {
-        if (a.status !== 'booked') return false;
+        if (!['booked', 'reported_issue', 'completed'].includes(a.status)) return false;
         const d = new Date(a.time);
         if (filter === 'day') return isSameDay(d, selectedDate);
         if (filter === 'week') {
@@ -871,7 +885,7 @@
                             {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
                               const d = i + 1;
                               const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                              const hasAppt = appointments.some(a => a.status === 'booked' && a.time.startsWith(currentDateStr));
+                              const hasAppt = appointments.some(a => ['booked', 'reported_issue'].includes(a.status) && a.time.startsWith(currentDateStr));
                               const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
 
                               return (
@@ -894,6 +908,9 @@
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
                       {filteredAppointments.map(appt => {
                         const dateObj = new Date(appt.time);
+                        // 判斷是否已經過了上課時間 + 50分鐘
+                        const isPast = now.getTime() >= dateObj.getTime() + 50 * 60000;
+
                         return (
                           <div key={appt.id} className="flex items-center p-3 bg-white border border-stone-100 rounded-2xl shadow-sm hover:border-emerald-200 transition gap-3">
                             <div className="bg-emerald-50 text-emerald-700 w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0">
@@ -906,10 +923,37 @@
                                 <Clock size={12} /> {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                               </div>
                             </div>
-                            <button onClick={() => handleCancel(appt)} className="text-rose-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-xl transition flex flex-col items-center justify-center flex-shrink-0">
-                              <Trash2 size={16} />
-                              <span className="text-[10px] mt-1 font-bold">取消</span>
-                            </button>
+
+                            {/* 老師端右側操作區：根據時間及狀態切換 UI */}
+                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                              {appt.status === 'reported_issue' && (
+                                <div className="text-[10px] text-rose-600 font-bold bg-rose-50 px-2 py-1 rounded-md text-right border border-rose-100 mb-1 leading-tight">
+                                  ⚠️ 是否真的已完成課程？
+                                </div>
+                              )}
+                              
+                              {!isPast && appt.status === 'booked' && (
+                                <button onClick={() => handleCancel(appt)} className="text-rose-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-xl transition flex flex-col items-center justify-center">
+                                  <Trash2 size={16} />
+                                  <span className="text-[10px] mt-1 font-bold">取消</span>
+                                </button>
+                              )}
+
+                              {isPast && (appt.status === 'booked' || appt.status === 'reported_issue') && (
+                                <div className="flex items-center gap-1.5">
+                                  <button onClick={() => handleComplete(appt.id)} className="text-xs px-2.5 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition font-bold border border-emerald-200 whitespace-nowrap">
+                                    已完成
+                                  </button>
+                                  <button onClick={() => handleCancel(appt)} className="text-xs px-2.5 py-1.5 bg-stone-50 text-stone-600 hover:bg-stone-100 rounded-lg transition font-bold border border-stone-200 whitespace-nowrap">
+                                    請假
+                                  </button>
+                                </div>
+                              )}
+
+                              {appt.status === 'completed' && (
+                                <span className="text-xs text-stone-400 font-bold bg-stone-100 px-2 py-1 rounded-md">已完成</span>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -1173,13 +1217,14 @@
       const [activeTab, setActiveTab] = useState('教材');
       const [showSyncModal, setShowSyncModal] = useState(false);
 
+      // 自動更新時間
       useEffect(() => {
         const timer = setInterval(() => setNow(new Date()), 60000);
         return () => clearInterval(timer);
       }, []);
 
       const myAppointments = appointments
-        .filter(a => a.studentId === profile.id && a.status === 'booked')
+        .filter(a => a.studentId === profile.id && ['booked', 'reported_issue', 'completed'].includes(a.status))
         .sort((a,b) => new Date(a.time) - new Date(b.time));
 
       const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
@@ -1203,9 +1248,17 @@
         return true;
       });
 
-      const historyAppointments = appointments
-        .filter(a => a.studentId === profile.id && a.status === 'cancelled')
+      // 替換 historyAppointments 為 completedAppointments
+      const completedAppointments = appointments
+        .filter(a => a.studentId === profile.id && a.status === 'completed')
         .sort((a,b) => new Date(b.time) - new Date(a.time));
+
+      // 計算預約中的課程數量 (狀態為 booked 且時間未超過 50 分鐘)
+      const bookedCount = appointments.filter(a => 
+        a.studentId === profile.id && 
+        a.status === 'booked' && 
+        now.getTime() < new Date(a.time).getTime() + 50 * 60000
+      ).length;
 
       const myMaterials = materials
         .filter(m => m.studentId === profile.id)
@@ -1213,7 +1266,8 @@
 
       const filteredMaterials = myMaterials.filter(m => m.type === activeTab);
 
-      const nextClass = myAppointments.find(a => new Date(a.time) > new Date(now.getTime() - 50 * 60000)); 
+      // 找尋下一堂「已預約」的課程
+      const nextClass = myAppointments.find(a => a.status === 'booked' && new Date(a.time) > new Date(now.getTime() - 50 * 60000)); 
 
       const handleCopySubscriptionLink = () => {
         // 🔥 更新了您的專屬後端網址 (學生端)，加入 t 參數強制 Google 抓取最新資料
@@ -1224,7 +1278,7 @@
       };
 
       const handleExportICS = () => {
-        const futureAppts = myAppointments.filter(a => new Date(a.time) > new Date());
+        const futureAppts = myAppointments.filter(a => ['booked', 'reported_issue'].includes(a.status) && new Date(a.time) > new Date());
         if (futureAppts.length === 0) {
           showDialog('無課程', '目前沒有未來的課程可以匯出。');
           return;
@@ -1260,6 +1314,14 @@
           await getApptRef().doc(appt.id).update({ status: 'cancelled' });
           await getUsersRef().doc(profile.id).update({ remaining_lessons: profile.remaining_lessons + 1 });
           showDialog('取消成功', '已成功取消預約，堂數已退還。');
+        });
+      };
+
+      // 學生端：回報課程未完成
+      const handleReportIssue = (apptId) => {
+        showConfirm('聯繫老師', '這堂課尚未完成，確定要通知老師處理嗎？', async () => {
+          await getApptRef().doc(apptId).update({ status: 'reported_issue' });
+          showDialog('已送出', '已通知老師，老師將會進一步為您處理！');
         });
       };
 
@@ -1429,7 +1491,7 @@
                         {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
                           const d = i + 1;
                           const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                          const hasAppt = myAppointments.some(a => a.time.startsWith(currentDateStr));
+                          const hasAppt = myAppointments.some(a => ['booked', 'reported_issue', 'completed'].includes(a.status) && a.time.startsWith(currentDateStr));
                           const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
 
                           return (
@@ -1447,23 +1509,48 @@
                 {filteredMyAppointments.length === 0 ? (
                   <p className="text-stone-400 text-sm">此區間暫無預約</p>
                 ) : (
-                  filteredMyAppointments.map(appt => (
-                    <div key={appt.id} className="flex justify-between items-center p-4 bg-stone-50 rounded-2xl border border-stone-100 hover:border-emerald-200 transition">
-                      <div>
-                        <div className="font-bold text-stone-800">
-                          {new Date(appt.time).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric'})} ({new Date(appt.time).toLocaleDateString('zh-TW', { weekday: 'short'})})
+                  filteredMyAppointments.map(appt => {
+                    const isPast = now.getTime() >= new Date(appt.time).getTime() + 50 * 60000;
+                    
+                    return (
+                      <div key={appt.id} className="flex justify-between items-center p-4 bg-stone-50 rounded-2xl border border-stone-100 hover:border-emerald-200 transition">
+                        <div>
+                          <div className="font-bold text-stone-800">
+                            {new Date(appt.time).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric'})} ({new Date(appt.time).toLocaleDateString('zh-TW', { weekday: 'short'})})
+                          </div>
+                          <div className="text-stone-500 text-sm flex items-center gap-1 mt-1">
+                            <Clock size={14} /> {new Date(appt.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (50分)
+                          </div>
                         </div>
-                        <div className="text-stone-500 text-sm flex items-center gap-1 mt-1">
-                          <Clock size={14} /> {new Date(appt.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (50分)
+                        
+                        {/* 學生端右側操作區 */}
+                        <div className="flex flex-col items-end gap-1">
+                          {!isPast && appt.status === 'booked' && (
+                            <button onClick={() => handleCancel(appt)} className="text-xs px-3 py-1.5 text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-lg transition font-medium">
+                              取消預約
+                            </button>
+                          )}
+                          
+                          {isPast && appt.status === 'booked' && (
+                            <div className="flex flex-col items-end">
+                              <span className="text-xs text-stone-400 font-bold mb-1">已完成</span>
+                              <button onClick={() => handleReportIssue(appt.id)} className="text-[10px] text-stone-400 hover:text-emerald-600 underline transition">
+                                若未完成課程，請點此聯繫老師
+                              </button>
+                            </div>
+                          )}
+
+                          {appt.status === 'reported_issue' && (
+                            <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-md font-bold">等待老師處理中</span>
+                          )}
+
+                          {appt.status === 'completed' && (
+                            <span className="text-xs text-stone-400 font-bold bg-stone-100 px-2 py-1 rounded-md">已完成</span>
+                          )}
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="danger" onClick={() => handleCancel(appt)} className="text-xs px-3 py-1.5 h-auto">
-                          取消預約
-                        </Button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </Card>
@@ -1542,20 +1629,37 @@
               </div>
             )}
 
-            <Card>
+            <Card className="flex flex-col h-full">
               <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-stone-700">
-                <RefreshCw className="text-stone-400" /> 取消紀錄
+                <Check className="text-emerald-600" /> 課程狀態總覽與紀錄
               </h3>
-              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                {historyAppointments.length === 0 ? (
-                  <p className="text-stone-400 text-sm">無歷史紀錄</p>
+              
+              <div className="grid grid-cols-3 gap-2 mb-6">
+                <div className="bg-stone-50 rounded-xl p-3 text-center border border-stone-100">
+                  <div className="text-xs text-stone-500 font-bold mb-1">未約課程</div>
+                  <div className="text-2xl font-black text-emerald-600">{profile.remaining_lessons} <span className="text-sm font-medium">堂</span></div>
+                </div>
+                <div className="bg-stone-50 rounded-xl p-3 text-center border border-stone-100">
+                  <div className="text-xs text-stone-500 font-bold mb-1">預約中課程</div>
+                  <div className="text-2xl font-black text-amber-500">{bookedCount} <span className="text-sm font-medium">堂</span></div>
+                </div>
+                <div className="bg-stone-50 rounded-xl p-3 text-center border border-stone-100">
+                  <div className="text-xs text-stone-500 font-bold mb-1">已完成課程</div>
+                  <div className="text-2xl font-black text-blue-500">{completedAppointments.length} <span className="text-sm font-medium">堂</span></div>
+                </div>
+              </div>
+
+              <div className="text-sm font-bold text-stone-600 mb-3 border-b border-stone-100 pb-2">已完成紀錄</div>
+              <div className="space-y-3 flex-1 overflow-y-auto pr-2 max-h-[250px]">
+                {completedAppointments.length === 0 ? (
+                  <p className="text-stone-400 text-sm text-center py-4">目前尚無已完成的課程紀錄</p>
                 ) : (
-                  historyAppointments.map(appt => (
-                    <div key={appt.id} className="flex justify-between items-center p-3 opacity-60 bg-stone-50 rounded-xl">
-                      <div className="text-sm">
-                        <span className="line-through text-stone-500">{new Date(appt.time).toLocaleString('zh-TW')}</span>
+                  completedAppointments.map(appt => (
+                    <div key={appt.id} className="flex justify-between items-center p-3 bg-stone-50 rounded-xl border border-stone-100 hover:border-emerald-200 transition">
+                      <div className="text-sm font-medium text-stone-700">
+                        {new Date(appt.time).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit'})} {new Date(appt.time).toLocaleTimeString('zh-TW', {hour: '2-digit', minute:'2-digit'})}
                       </div>
-                      <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-1 rounded-md">已取消</span>
+                      <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-md">已完成</span>
                     </div>
                   ))
                 )}
