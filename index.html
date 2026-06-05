@@ -2,46 +2,42 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>SandyJP 課程預約系統</title>
 
-  <!-- 1. 引入 React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   
-  <!-- 嘗試修復部分 CDN 環境下找不到 React 的問題 -->
+  <!-- 修復：確保 React 環境變數穩定 -->
   <script>
     window.react = window.React;
   </script>
 
-  <!-- 2. 引入 Babel Standalone 以解析 JSX -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Babel Standalone (降版至 7.23.6 以避開新版 Babel 的 Infinity 報錯) -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.6/babel.min.js"></script>
   
-  <!-- 3. 引入 Tailwind CSS Play CDN -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- 4. 引入 Lucide React 圖標庫 -->
-  <script src="https://unpkg.com/lucide-react@0.344.0/dist/umd/lucide-react.min.js"></script>
-
-  <!-- 5. 引入 Firebase Compat SDK -->
+  <!-- Firebase Compat SDK (V8 相容語法) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  
+  <!-- Lucide React Icons -->
+  <script src="https://unpkg.com/lucide-react@0.344.0/dist/umd/lucide-react.min.js"></script>
 </head>
 <body class="bg-[#f8f7f5] text-stone-800 font-sans antialiased">
+  
   <!-- React 應用的掛載點 -->
   <div id="root"></div>
 
-  <!-- 主程式腳本 -->
   <script type="text/babel">
     const { useState, useEffect } = React;
-    
-    // ==========================================
-    // 防彈級圖標備用機制 (Fallback)
-    // 確保即使 lucide-react CDN 掛掉，系統也能繼續正常顯示 SVG 圖像，不會崩潰
-    // ==========================================
+
+    // A. 防彈級圖標機制：完全移除會報錯的強制解構寫法，改用安全讀取與原生 SVG Fallback，保證 100% 穩定運行
     const FallbackIcon = ({ icon, size = 24, className = '', color = 'currentColor' }) => {
-      // 將 PascalCase 轉換為 kebab-case
       const kebabName = icon.replace(/([a-z])([A-Z0-9])/g, '$1-$2').toLowerCase();
       const url = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${kebabName}.svg`;
       return (
@@ -58,10 +54,9 @@
       );
     };
 
-    // 安全地取得圖標物件
-    const lucide = window.lucideReact || {};
-    
-    // 將所有需要的圖標安全解構
+    // 安全讀取全域變數，如果 lucideReact 不存在就回傳空物件，防止系統崩潰
+    const lucide = typeof window !== 'undefined' && window.lucideReact ? window.lucideReact : {};
+
     const CalendarIcon = lucide.Calendar || ((p) => <FallbackIcon icon="Calendar" {...p} />);
     const User = lucide.User || ((p) => <FallbackIcon icon="User" {...p} />);
     const Clock = lucide.Clock || ((p) => <FallbackIcon icon="Clock" {...p} />);
@@ -69,8 +64,6 @@
     const BookOpen = lucide.BookOpen || ((p) => <FallbackIcon icon="BookOpen" {...p} />);
     const Plus = lucide.Plus || ((p) => <FallbackIcon icon="Plus" {...p} />);
     const RefreshCw = lucide.RefreshCw || ((p) => <FallbackIcon icon="RefreshCw" {...p} />);
-    const ToggleLeft = lucide.ToggleLeft || ((p) => <FallbackIcon icon="ToggleLeft" {...p} />);
-    const ToggleRight = lucide.ToggleRight || ((p) => <FallbackIcon icon="ToggleRight" {...p} />);
     const Trash2 = lucide.Trash2 || ((p) => <FallbackIcon icon="Trash2" {...p} />);
     const Edit2 = lucide.Edit2 || ((p) => <FallbackIcon icon="Edit2" {...p} />);
     const Check = lucide.Check || ((p) => <FallbackIcon icon="Check" {...p} />);
@@ -88,9 +81,7 @@
     const AlertCircle = lucide.AlertCircle || ((p) => <FallbackIcon icon="AlertCircle" {...p} />);
     const CalendarPlus = lucide.CalendarPlus || ((p) => <FallbackIcon icon="CalendarPlus" {...p} />);
 
-    // ==========================================
-    // 1. Firebase 初始化與配置
-    // ==========================================
+    // B. 初始化 Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyB1DtXSgsw90GMpyw-UJzJwZgYPJedo4eI",
       authDomain: "jplesson-login.firebaseapp.com",
@@ -101,22 +92,22 @@
       appId: "1:961499513747:web:1991767008868cb7a55e66",
       measurementId: "G-J4V0SW3NWW"
     };
-
+    
     if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
+        firebase.initializeApp(firebaseConfig);
     }
     
     const auth = firebase.auth();
     const db = firebase.firestore();
-    const appId = "jplesson-login-data";
+    const customAppId = "jplesson-login-data";
 
     // 輔助函式：取得各資料集合的參照
-    const getUsersRef = () => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('users');
-    const getApptRef = () => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('appointments');
-    const getMatRef = () => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('materials');
+    const getUsersRef = () => db.collection('artifacts').doc(customAppId).collection('public').doc('data').collection('users');
+    const getApptRef = () => db.collection('artifacts').doc(customAppId).collection('public').doc('data').collection('appointments');
+    const getMatRef = () => db.collection('artifacts').doc(customAppId).collection('public').doc('data').collection('materials');
 
     // ==========================================
-    // 2. 共用 UI 元件 (日系清新風格)
+    // C. 共用 UI 元件
     // ==========================================
     const Card = ({ children, className = '' }) => (
       <div className={`bg-white rounded-3xl p-6 shadow-sm border border-stone-100 ${className}`}>
@@ -139,7 +130,6 @@
       );
     };
 
-    // --- 客製化對話框 ---
     const CustomDialog = ({ isOpen, title, message, isConfirm, onConfirm, onClose }) => {
       if (!isOpen) return null;
       return (
@@ -161,7 +151,7 @@
     };
 
     // ==========================================
-    // 3. 主應用程式
+    // 主應用程式 (App Component)
     // ==========================================
     function App() {
       const [user, setUser] = useState(null);
@@ -170,20 +160,17 @@
       const [materials, setMaterials] = useState([]); 
       const [loading, setLoading] = useState(true);
       
-      // 登入狀態 (加入 localStorage 紀錄以維持登入)
       const [activeProfileId, setActiveProfileId] = useState(localStorage.getItem('sandyjp_activeUser') || null);
       const [loginAccount, setLoginAccount] = useState('');
       const [loginPassword, setLoginPassword] = useState('');
       const [loginError, setLoginError] = useState(''); 
 
-      // 忘記密碼狀態
       const [forgotStep, setForgotStep] = useState(0);
       const [forgotUser, setForgotUser] = useState('');
       const [forgotEmail, setForgotEmail] = useState('');
       const [forgotNewPass, setForgotNewPass] = useState('');
       const [forgotUserId, setForgotUserId] = useState(null);
 
-      // 全域 Dialog 狀態
       const [dialog, setDialog] = useState({ isOpen: false, title: '', message: '', isConfirm: false, onConfirm: null });
 
       const showDialog = (title, message) => setDialog({ isOpen: true, title, message, isConfirm: false, onConfirm: null });
@@ -228,7 +215,6 @@
 
       const profile = allUsers.find(u => u.id === activeProfileId) || null;
 
-      // 若找不到該帳號但有存檔，清除無效登入狀態
       useEffect(() => {
         if (!loading && activeProfileId && !profile) {
           localStorage.removeItem('sandyjp_activeUser');
@@ -249,7 +235,7 @@
           return;
         }
         setActiveProfileId(userWithAccount.id);
-        localStorage.setItem('sandyjp_activeUser', userWithAccount.id); // 記住登入狀態
+        localStorage.setItem('sandyjp_activeUser', userWithAccount.id);
         setLoginAccount('');
         setLoginPassword('');
       };
@@ -390,7 +376,7 @@
         return (
           <div className="min-h-screen bg-[#f8f7f5] flex flex-col items-center justify-center p-4">
             <CustomDialog {...dialog} onClose={closeDialog} />
-            <StudentActivationScreen profile={profile} showDialog={showDialog} getUsersRef={getUsersRef} />
+            <StudentActivationScreen profile={profile} showDialog={showDialog} />
           </div>
         );
       }
@@ -412,7 +398,7 @@
               <button 
                 onClick={() => {
                   setActiveProfileId(null);
-                  localStorage.removeItem('sandyjp_activeUser'); // 登出時清除紀錄
+                  localStorage.removeItem('sandyjp_activeUser');
                 }}
                 className="flex items-center gap-1 text-sm text-stone-400 hover:text-rose-600 font-medium transition"
               >
@@ -424,9 +410,9 @@
 
           <main className="max-w-5xl mx-auto px-4 mt-8">
             {profile.role === 'admin' ? (
-              <TeacherDashboard profile={profile} users={allUsers} appointments={appointments} materials={materials} showDialog={showDialog} showConfirm={showConfirm} getUsersRef={getUsersRef} getApptRef={getApptRef} getMatRef={getMatRef} />
+              <TeacherDashboard profile={profile} users={allUsers} appointments={appointments} materials={materials} showDialog={showDialog} showConfirm={showConfirm} />
             ) : (
-              <StudentDashboard profile={profile} appointments={appointments} materials={materials} showDialog={showDialog} showConfirm={showConfirm} getUsersRef={getUsersRef} getApptRef={getApptRef} />
+              <StudentDashboard profile={profile} appointments={appointments} materials={materials} showDialog={showDialog} showConfirm={showConfirm} />
             )}
           </main>
         </div>
@@ -434,9 +420,9 @@
     }
 
     // ==========================================
-    // 3-1. 學生啟動帳號流程元件
+    // 學生啟動帳號流程元件
     // ==========================================
-    function StudentActivationScreen({ profile, showDialog, getUsersRef }) {
+    function StudentActivationScreen({ profile, showDialog }) {
       const [email, setEmail] = useState('');
       const [newPassword, setNewPassword] = useState('');
       const [confirmPassword, setConfirmPassword] = useState('');
@@ -497,9 +483,179 @@
     }
 
     // ==========================================
-    // 4. 老師後台 (Teacher Dashboard)
+    // 老師專用：特定學生詳細管理頁面
     // ==========================================
-    function TeacherDashboard({ profile, users, appointments, materials, showDialog, showConfirm, getUsersRef, getApptRef, getMatRef }) {
+    function TeacherStudentDetail({ student, materials, onBack, showDialog, showConfirm }) {
+      const [matType, setMatType] = useState('教材'); 
+      const [matTitle, setMatTitle] = useState('');
+      const [matUrl, setMatUrl] = useState('');
+      const [matDeadline, setMatDeadline] = useState(''); 
+      const [activeTab, setActiveTab] = useState('教材');
+
+      const myMaterials = materials
+        .filter(m => m.studentId === student.id)
+        .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      const filteredMaterials = myMaterials.filter(m => m.type === activeTab);
+
+      const handleAddPackage = async (amount) => {
+        const newAmount = Math.max(0, (student.remaining_lessons || 0) + amount);
+        await getUsersRef().doc(student.id).update({ remaining_lessons: newAmount });
+      };
+
+      const handleAddMaterial = async (e) => {
+        e.preventDefault();
+        if (!matTitle || !matUrl) return;
+        try {
+          await getMatRef().add({
+            studentId: student.id, type: matType, title: matTitle, url: matUrl,
+            deadline: (matType === '作業' || matType === '測驗') ? matDeadline : '', 
+            createdAt: new Date().toISOString()
+          });
+          setMatTitle(''); setMatUrl(''); setMatDeadline('');
+          setActiveTab(matType); 
+          showDialog('發送成功', `已將${matType}資源發送給學生。`);
+        } catch (err) {
+          showDialog('發送失敗', '新增資源時發生錯誤，請稍後再試。');
+        }
+      };
+
+      const handleDeleteMaterial = async (id) => {
+        showConfirm('刪除資源', '確定要刪除此學習連結嗎？', async () => {
+          await getMatRef().doc(id).delete();
+        });
+      };
+
+      const getIconForType = (type) => {
+        if (type === '作業') return <PenTool size={18} className="text-amber-500" />;
+        if (type === '測驗') return <CheckSquare size={18} className="text-rose-500" />;
+        return <FileText size={18} className="text-blue-500" />;
+      };
+
+      return (
+        <div className="space-y-6 animate-in slide-in-from-right-8 duration-300">
+          <button onClick={onBack} className="flex items-center gap-2 text-stone-500 hover:text-emerald-700 transition font-bold mb-4">
+            <ArrowLeft size={20} /> 返回學生列表
+          </button>
+
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-stone-800 flex items-center gap-3">
+                {student.name} <span className="text-base sm:text-lg font-normal text-stone-500">的專屬管理頁面</span>
+              </h2>
+              <div className="mt-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <div className="text-xs text-stone-500 bg-white p-2.5 rounded-xl border border-stone-200 shadow-sm inline-block">
+                  <span className="text-stone-400">登入帳號:</span> <span className="font-mono text-stone-700 font-bold">{student.username}</span> <br/>
+                  <span className="text-stone-400">登入密碼:</span> <span className="font-mono text-stone-700 font-bold">{student.password}</span>
+                </div>
+                
+                <div className="flex items-center gap-3 bg-stone-50 p-2 rounded-xl border border-stone-100">
+                  <span className="text-sm text-stone-500 font-medium">剩餘：<strong className="text-emerald-600 text-lg">{student.remaining_lessons}</strong> 堂</span>
+                  <div className="flex gap-1">
+                    <Button onClick={() => handleAddPackage(-1)} variant="secondary" disabled={student.remaining_lessons <= 0} className="text-xs px-2 py-1 h-auto">-1</Button>
+                    <Button onClick={() => handleAddPackage(1)} variant="secondary" className="text-xs px-2 py-1 h-auto">+1</Button>
+                    <Button onClick={() => handleAddPackage(5)} variant="secondary" className="text-xs px-2 py-1 h-auto">+5</Button>
+                    <Button onClick={() => handleAddPackage(10)} variant="secondary" className="text-xs px-2 py-1 h-auto">+10</Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="md:col-span-1 h-fit border-emerald-200 bg-emerald-50/30">
+              <h3 className="text-lg font-bold mb-4 text-emerald-800 flex items-center gap-2">
+                <LinkIcon size={20} /> 新增學習連結
+              </h3>
+              <form onSubmit={handleAddMaterial} className="space-y-4">
+                <div>
+                  <label className="block text-sm text-stone-600 mb-1">類型</label>
+                  <select value={matType} onChange={e=>setMatType(e.target.value)} className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option value="教材">📚 教材 (Textbook)</option>
+                    <option value="作業">📝 作業 (Homework)</option>
+                    <option value="測驗">💯 測驗 (Quiz)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-stone-600 mb-1">標題 / 說明</label>
+                  <input type="text" value={matTitle} onChange={e=>setMatTitle(e.target.value)} required placeholder="例如：第12課 單字練習" className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                <div>
+                  <label className="block text-sm text-stone-600 mb-1">連結網址 (URL)</label>
+                  <input type="url" value={matUrl} onChange={e=>setMatUrl(e.target.value)} required placeholder="https://..." className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                
+                {(matType === '作業' || matType === '測驗') && (
+                  <div className="animate-in fade-in slide-in-from-top-1">
+                    <label className="block text-sm text-stone-600 mb-1">期限 (選填)</label>
+                    <input type="date" value={matDeadline} onChange={e=>setMatDeadline(e.target.value)} className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                )}
+                
+                <Button type="submit" className="w-full shadow-sm">發送給學生</Button>
+              </form>
+            </Card>
+
+            <Card className="md:col-span-2">
+              <h3 className="text-xl font-bold mb-4 text-stone-700 flex items-center gap-2">
+                <BookOpen size={20} className="text-emerald-600"/> 學習資源履歷
+              </h3>
+              
+              <div className="flex gap-2 border-b border-stone-100 mb-6">
+                {['教材', '作業', '測驗'].map(tab => (
+                  <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-1.5 px-4 py-2.5 font-bold transition-all border-b-2 ${activeTab === tab ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-stone-400 hover:text-stone-600'}`}>
+                    {tab === '教材' && <FileText size={16}/>}
+                    {tab === '作業' && <PenTool size={16}/>}
+                    {tab === '測驗' && <CheckSquare size={16}/>}
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                {filteredMaterials.length === 0 ? (
+                  <p className="text-stone-400 text-center py-10">目前尚無{activeTab}發送紀錄</p>
+                ) : (
+                  filteredMaterials.map(mat => (
+                    <div key={mat.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-stone-50 border border-stone-100 rounded-2xl hover:border-emerald-200 transition gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-white rounded-lg shadow-sm">
+                          {getIconForType(mat.type)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-stone-800">{mat.title}</h4>
+                          <div className="text-xs text-stone-400 mt-1">
+                            建立於 {new Date(mat.createdAt).toLocaleDateString('zh-TW')}
+                          </div>
+                          {mat.deadline && (
+                            <div className="text-xs text-rose-500 font-bold mt-1 flex items-center gap-1">
+                              <Clock size={12} /> 期限：{new Date(mat.deadline).toLocaleDateString('zh-TW')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a href={mat.url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-white border border-stone-200 text-stone-600 hover:text-emerald-600 hover:border-emerald-300 rounded-xl text-sm font-medium transition">
+                          開啟連結
+                        </a>
+                        <button onClick={() => handleDeleteMaterial(mat.id)} className="p-2 text-stone-400 hover:text-rose-500 bg-white border border-stone-200 rounded-xl transition">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 老師後台 (Teacher Dashboard)
+    // ==========================================
+    function TeacherDashboard({ profile, users, appointments, materials, showDialog, showConfirm }) {
       const [selectedStudent, setSelectedStudent] = useState('');
       const [bookDate, setBookDate] = useState('');
       const [bookTime, setBookTime] = useState('');
@@ -525,12 +681,11 @@
       if (viewingStudentId) {
         const student = users.find(u => u.id === viewingStudentId);
         if (student) {
-          return <TeacherStudentDetail student={student} materials={materials} onBack={() => setViewingStudentId(null)} showDialog={showDialog} showConfirm={showConfirm} getMatRef={getMatRef} />;
+          return <TeacherStudentDetail student={student} materials={materials} onBack={() => setViewingStudentId(null)} showDialog={showDialog} showConfirm={showConfirm} />;
         }
       }
 
       const handleCopySubscriptionLink = () => {
-        // 🔥 更新了您的專屬後端網址 (老師端)，加入 t 參數強制 Google 抓取最新資料
         const subscriptionUrl = `https://exportcalendar-uetgtllobq-uc.a.run.app?user=${profile.id}&role=admin&t=${Date.now()}`;
         navigator.clipboard.writeText(subscriptionUrl).then(() => {
           showDialog('複製成功！', '請參考下方教學，將網址貼入您的 Google 或 Apple 行事曆中。');
@@ -552,14 +707,25 @@
           return;
         }
         let icsContent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SandyJP Tutor Admin//TW\r\n";
+        icsContent += "BEGIN:VTIMEZONE\r\nTZID:Asia/Taipei\r\nBEGIN:STANDARD\r\nTZOFFSETFROM:+0800\r\nTZOFFSETTO:+0800\r\nTZNAME:CST\r\nDTSTART:19700101T000000\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n";
+        
         futureAppts.forEach(appt => {
           const startDate = new Date(appt.time);
           const endDate = new Date(startDate.getTime() + 50 * 60000);
-          const formatICSDate = (date) => date.toISOString().replace(/[-:]|\.\d\d\d/g, '');
+          
+          const formatICSDate = (date) => {
+            return date.getFullYear().toString() + 
+                   (date.getMonth() + 1).toString().padStart(2, '0') + 
+                   date.getDate().toString().padStart(2, '0') + 'T' + 
+                   date.getHours().toString().padStart(2, '0') + 
+                   date.getMinutes().toString().padStart(2, '0') + 
+                   date.getSeconds().toString().padStart(2, '0');
+          };
+          
           const link = appt.meetLink || appt.zoomLink || '';
           icsContent += "BEGIN:VEVENT\r\n";
-          icsContent += `DTSTART:${formatICSDate(startDate)}\r\n`;
-          icsContent += `DTEND:${formatICSDate(endDate)}\r\n`;
+          icsContent += `DTSTART;TZID=Asia/Taipei:${formatICSDate(startDate)}\r\n`;
+          icsContent += `DTEND;TZID=Asia/Taipei:${formatICSDate(endDate)}\r\n`;
           icsContent += `SUMMARY:【教學】${appt.studentName} 的日文課\r\n`;
           icsContent += `DESCRIPTION:教室連結：${link}\r\n`;
           icsContent += "END:VEVENT\r\n";
@@ -575,13 +741,6 @@
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
         showDialog('匯出成功', '已下載總課表檔案 (.ics)！請直接開啟檔案，系統便會自動將所有未來的課程加入您的日曆中。');
-      };
-
-      const handleAddPackage = async (studentId, amount) => {
-        const student = students.find(s => s.id === studentId);
-        if (!student) return;
-        const newAmount = Math.max(0, (student.remaining_lessons || 0) + amount);
-        await getUsersRef().doc(studentId).update({ remaining_lessons: newAmount });
       };
 
       const handleSaveStudentName = async (studentId) => {
@@ -718,7 +877,7 @@
         <div className="space-y-8 animate-in fade-in duration-500">
           <div className="flex justify-between items-end">
             <div>
-              <h2 className="text-3xl font-bold text-stone-800">先生、お疲れ様です！</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-stone-800 whitespace-nowrap">先生、お疲れ様です！</h2>
               <p className="text-stone-500 mt-2">這裡是您的後台管理系統</p>
             </div>
             <Button onClick={() => setShowAdminPwdForm(true)} variant="outline" className="text-xs bg-white">
@@ -784,7 +943,7 @@
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={!selectedStudent || students.find(s=>s.id===selectedStudent)?.remaining_lessons < recurringWeeks}>
-                    確認預約並發送 Google Meet 連結
+                    確認預約並發送 Meet 連結
                   </Button>
                 </form>
               </Card>
@@ -809,42 +968,31 @@
                   </form>
                 )}
 
-                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                   {students.length === 0 ? <p className="text-stone-400 text-sm text-center py-4">目前無學生資料</p> : null}
                   {students.map(s => (
-                    <div key={s.id} className="p-4 bg-white rounded-2xl flex flex-col gap-3 border border-stone-100 shadow-sm relative group">
-                      <div className="flex justify-between items-start border-b border-stone-100 pb-3">
-                        <div className="flex-1">
-                          {editingStudentId === s.id ? (
-                            <div className="flex items-center gap-2 w-full mr-2 mb-1">
-                              <input type="text" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="flex-1 px-2 py-1 border border-emerald-300 rounded outline-none" autoFocus />
-                              <button onClick={() => handleSaveStudentName(s.id)} className="p-1 text-emerald-600 bg-emerald-50 rounded"><Check size={16}/></button>
-                              <button onClick={() => setEditingStudentId(null)} className="p-1 text-rose-500 bg-rose-50 rounded"><X size={16}/></button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-bold text-stone-800 text-lg">{s.name}</span>
-                              {!s.isActivated && <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold">未啟動</span>}
-                              <button onClick={() => { setEditingStudentId(s.id); setEditStudentName(s.name); }} className="text-stone-300 hover:text-stone-500 transition p-1"><Edit2 size={14} /></button>
-                              <button onClick={() => handleDeleteStudent(s.id, s.name)} className="text-stone-300 hover:text-rose-500 transition p-1"><Trash2 size={14} /></button>
-                              <button onClick={() => setViewingStudentId(s.id)} className="text-xs ml-2 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 transition whitespace-nowrap">進入專屬頁面 &rarr;</button>
-                            </div>
-                          )}
-                          <div className="text-xs text-stone-500 bg-stone-50 p-2 rounded-lg border border-stone-100 mt-1 inline-block">
-                            <span className="text-stone-400">帳號:</span> <span className="font-mono text-stone-700 font-medium">{s.username}</span> <br/>
-                            <span className="text-stone-400">密碼:</span> <span className="font-mono text-stone-700 font-medium">{s.password}</span>
+                    <div key={s.id} className="p-3 bg-white rounded-2xl flex items-center justify-between border border-stone-100 shadow-sm relative group">
+                      <div className="flex items-center gap-2 flex-1">
+                        {editingStudentId === s.id ? (
+                          <div className="flex items-center gap-2 w-full mr-2">
+                            <input type="text" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="flex-1 px-2 py-1 border border-emerald-300 rounded outline-none text-sm" autoFocus />
+                            <button onClick={() => handleSaveStudentName(s.id)} className="p-1 text-emerald-600 bg-emerald-50 rounded"><Check size={14}/></button>
+                            <button onClick={() => setEditingStudentId(null)} className="p-1 text-rose-500 bg-rose-50 rounded"><X size={14}/></button>
                           </div>
-                        </div>
-                        {editingStudentId !== s.id && (
-                          <span className={`px-2 py-1 rounded-md text-xs font-bold whitespace-nowrap ml-2 ${s.remaining_lessons > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>剩 {s.remaining_lessons} 堂</span>
+                        ) : (
+                          <div className="flex items-center gap-2 w-full">
+                            {!s.isActivated && <span className="text-[10px] bg-rose-50 border border-rose-200 text-rose-600 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">未啟動</span>}
+                            <span className="font-bold text-stone-800 text-base line-clamp-1">{s.name}</span>
+                            <button onClick={() => { setEditingStudentId(s.id); setEditStudentName(s.name); }} className="text-stone-300 hover:text-stone-500 transition p-1"><Edit2 size={12} /></button>
+                            <button onClick={() => handleDeleteStudent(s.id, s.name)} className="text-stone-300 hover:text-rose-500 transition p-1 ml-auto"><Trash2 size={12} /></button>
+                          </div>
                         )}
                       </div>
-                      <div className="grid grid-cols-4 gap-2">
-                        <Button onClick={() => handleAddPackage(s.id, -1)} variant="secondary" disabled={s.remaining_lessons <= 0} className="text-xs py-1.5 px-0">- 1</Button>
-                        <Button onClick={() => handleAddPackage(s.id, 1)} variant="secondary" className="text-xs py-1.5 px-0">+ 1</Button>
-                        <Button onClick={() => handleAddPackage(s.id, 5)} variant="secondary" className="text-xs py-1.5 px-0">+ 5</Button>
-                        <Button onClick={() => handleAddPackage(s.id, 10)} variant="secondary" className="text-xs py-1.5 px-0">+ 10</Button>
-                      </div>
+                      {editingStudentId !== s.id && (
+                        <button onClick={() => setViewingStudentId(s.id)} className="text-xs ml-3 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition font-medium whitespace-nowrap flex-shrink-0">
+                          進入專屬頁面 &rarr;
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -875,66 +1023,73 @@
                       <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 bg-stone-100 text-stone-600 hover:text-emerald-600 rounded-lg transition"><CalendarIcon size={20} /></button>
 
                       {showCalendar && (
-                        <div className="absolute top-full right-0 mt-2 p-4 bg-white border border-stone-200 shadow-xl rounded-2xl z-50 w-72">
-                          <div className="flex justify-between items-center mb-4">
-                            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronLeft size={18}/></button>
-                            <span className="font-bold text-stone-700">{viewDate.getFullYear()}年 {viewDate.getMonth() + 1}月</span>
-                            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronRight size={18}/></button>
-                          </div>
-                          <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                            {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-stone-400">{d}</div>)}
-                          </div>
-                          <div className="grid grid-cols-7 gap-1 text-center">
-                            {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
-                            {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
-                              const d = i + 1;
-                              const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                              const hasAppt = appointments.some(a => a.status === 'booked' && a.time.startsWith(currentDateStr));
-                              const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
+                        <>
+                          {/* 手機版半透明遮罩 */}
+                          <div className="fixed inset-0 bg-stone-900/20 z-[90] sm:hidden" onClick={() => setShowCalendar(false)}></div>
+                          
+                          {/* 日曆彈窗 - 手機版改為置中固定，電腦版為相對下拉 */}
+                          <div className="fixed sm:absolute top-1/2 sm:top-full left-1/2 sm:left-auto right-auto sm:right-0 -translate-x-1/2 sm:translate-x-0 -translate-y-1/2 sm:translate-y-0 sm:mt-2 p-5 sm:p-4 bg-white border border-stone-200 shadow-2xl sm:shadow-xl rounded-3xl sm:rounded-2xl z-[100] w-[320px] sm:w-72 max-w-[90vw]">
+                            <div className="flex justify-between items-center mb-4">
+                              <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-2 hover:bg-stone-100 rounded-full transition"><ChevronLeft size={20}/></button>
+                              <span className="font-bold text-stone-700 text-lg sm:text-base">{viewDate.getFullYear()}年 {viewDate.getMonth() + 1}月</span>
+                              <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-2 hover:bg-stone-100 rounded-full transition"><ChevronRight size={20}/></button>
+                            </div>
+                            <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                              {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-stone-400">{d}</div>)}
+                            </div>
+                            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center">
+                              {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
+                              {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+                                const d = i + 1;
+                                const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                                const hasAppt = appointments.some(a => a.status === 'booked' && a.time.startsWith(currentDateStr));
+                                const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
 
-                              return (
-                                <button key={d} onClick={() => { setSelectedDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), d)); setFilter('day'); setShowCalendar(false); }} className={`w-8 h-8 mx-auto flex items-center justify-center rounded-full text-sm transition ${isSelected ? 'ring-2 ring-emerald-500' : ''} ${hasAppt ? 'text-emerald-700 font-bold bg-emerald-100' : 'text-stone-700 hover:bg-stone-100'}`}>
-                                  {d}
-                                </button>
-                              );
-                            })}
+                                return (
+                                  <button key={d} onClick={() => { setSelectedDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), d)); setFilter('day'); setShowCalendar(false); }} className={`w-9 h-9 sm:w-8 sm:h-8 mx-auto flex items-center justify-center rounded-full text-sm transition ${isSelected ? 'ring-2 ring-emerald-500 font-bold' : ''} ${hasAppt ? 'text-emerald-700 font-bold bg-emerald-100' : 'text-stone-700 hover:bg-stone-100'}`}>
+                                    {d}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  {filteredAppointments.length === 0 ? (
-                    <div className="text-center py-10 text-stone-400">目前選擇的區間沒有課程</div>
-                  ) : (
-                    filteredAppointments.map(appt => {
-                      const dateObj = new Date(appt.time);
-                      return (
-                        <div key={appt.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white border border-stone-200 rounded-2xl shadow-sm hover:shadow-md transition">
-                          <div className="flex items-center gap-4 mb-4 sm:mb-0">
-                            <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl text-center min-w-[70px]">
-                              <div className="text-xs font-bold uppercase">{dateObj.toLocaleDateString('en-US', { weekday: 'short'})}</div>
-                              <div className="text-xl font-black">{dateObj.getDate()}</div>
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-lg text-stone-800">{appt.studentName}</h4>
-                              <div className="flex items-center gap-3 text-stone-500 text-sm mt-1">
-                                <span className="flex items-center gap-1"><Clock size={14} /> {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                <span className="flex items-center gap-1 text-emerald-600"><Video size={14} /> Meet 已生成</span>
+                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {filteredAppointments.length === 0 ? (
+                      <div className="col-span-full text-center py-10 text-stone-400">目前選擇的區間沒有課程</div>
+                    ) : (
+                      filteredAppointments.map(appt => {
+                        const dateObj = new Date(appt.time);
+                        return (
+                          <div key={appt.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-stone-200 rounded-2xl shadow-sm hover:shadow-md transition">
+                            <div className="flex items-center gap-3 mb-3 sm:mb-0">
+                              <div className="bg-emerald-50 text-emerald-700 p-2 rounded-xl text-center min-w-[55px]">
+                                <div className="text-[10px] font-bold uppercase">{dateObj.toLocaleDateString('en-US', { weekday: 'short'})}</div>
+                                <div className="text-lg font-black">{dateObj.getDate()}</div>
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-base text-stone-800 line-clamp-1">{appt.studentName}</h4>
+                                <div className="flex items-center gap-2 text-stone-500 text-xs mt-1">
+                                  <span className="flex items-center gap-1 whitespace-nowrap"><Clock size={12} /> {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                </div>
                               </div>
                             </div>
+                            <div className="flex gap-2">
+                              <Button variant="danger" onClick={() => handleCancel(appt)} className="px-3 py-1.5 text-xs">
+                                <Trash2 size={14} /> 取消
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Button variant="danger" onClick={() => handleCancel(appt)} className="px-3">
-                              <Trash2 size={16} /> 取消
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </Card>
             </div>
@@ -1016,157 +1171,7 @@
     }
 
     // ==========================================
-    // 4-1. 老師專用：特定學生詳細管理頁面
-    // ==========================================
-    function TeacherStudentDetail({ student, materials, onBack, showDialog, showConfirm, getMatRef }) {
-      const [matType, setMatType] = useState('教材'); 
-      const [matTitle, setMatTitle] = useState('');
-      const [matUrl, setMatUrl] = useState('');
-      const [matDeadline, setMatDeadline] = useState(''); 
-      const [activeTab, setActiveTab] = useState('教材');
-
-      const myMaterials = materials
-        .filter(m => m.studentId === student.id)
-        .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-      const filteredMaterials = myMaterials.filter(m => m.type === activeTab);
-
-      const handleAddMaterial = async (e) => {
-        e.preventDefault();
-        if (!matTitle || !matUrl) return;
-        try {
-          await getMatRef().add({
-            studentId: student.id, type: matType, title: matTitle, url: matUrl,
-            deadline: (matType === '作業' || matType === '測驗') ? matDeadline : '', 
-            createdAt: new Date().toISOString()
-          });
-          setMatTitle(''); setMatUrl(''); setMatDeadline('');
-          setActiveTab(matType); 
-          showDialog('發送成功', `已將${matType}資源發送給學生。`);
-        } catch (err) {
-          showDialog('發送失敗', '新增資源時發生錯誤，請稍後再試。');
-        }
-      };
-
-      const handleDeleteMaterial = async (id) => {
-        showConfirm('刪除資源', '確定要刪除此學習連結嗎？', async () => {
-          await getMatRef().doc(id).delete();
-        });
-      };
-
-      const getIconForType = (type) => {
-        if (type === '作業') return <PenTool size={18} className="text-amber-500" />;
-        if (type === '測驗') return <CheckSquare size={18} className="text-rose-500" />;
-        return <FileText size={18} className="text-blue-500" />;
-      };
-
-      return (
-        <div className="space-y-6 animate-in slide-in-from-right-8 duration-300">
-          <button onClick={onBack} className="flex items-center gap-2 text-stone-500 hover:text-emerald-700 transition font-bold mb-4">
-            <ArrowLeft size={20} /> 返回學生列表
-          </button>
-
-          <div className="flex items-end justify-between">
-            <div>
-              <h2 className="text-3xl font-bold text-stone-800 flex items-center gap-3">
-                {student.name} <span className="text-lg font-normal text-stone-500">的專屬管理頁面</span>
-              </h2>
-              <p className="text-stone-500 mt-2">剩餘堂數：<span className="font-bold text-emerald-600">{student.remaining_lessons}</span> 堂</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="md:col-span-1 h-fit border-emerald-200 bg-emerald-50/30">
-              <h3 className="text-lg font-bold mb-4 text-emerald-800 flex items-center gap-2">
-                <LinkIcon size={20} /> 新增學習連結
-              </h3>
-              <form onSubmit={handleAddMaterial} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-stone-600 mb-1">類型</label>
-                  <select value={matType} onChange={e=>setMatType(e.target.value)} className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400">
-                    <option value="教材">📚 教材 (Textbook)</option>
-                    <option value="作業">📝 作業 (Homework)</option>
-                    <option value="測驗">💯 測驗 (Quiz)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-stone-600 mb-1">標題 / 說明</label>
-                  <input type="text" value={matTitle} onChange={e=>setMatTitle(e.target.value)} required placeholder="例如：第12課 單字練習" className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
-                </div>
-                <div>
-                  <label className="block text-sm text-stone-600 mb-1">連結網址 (URL)</label>
-                  <input type="url" value={matUrl} onChange={e=>setMatUrl(e.target.value)} required placeholder="https://..." className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
-                </div>
-                
-                {(matType === '作業' || matType === '測驗') && (
-                  <div className="animate-in fade-in slide-in-from-top-1">
-                    <label className="block text-sm text-stone-600 mb-1">期限 (選填)</label>
-                    <input type="date" value={matDeadline} onChange={e=>setMatDeadline(e.target.value)} className="w-full p-2.5 rounded-xl border border-stone-200 bg-white outline-none focus:ring-2 focus:ring-emerald-400" />
-                  </div>
-                )}
-                
-                <Button type="submit" className="w-full shadow-sm">發送給學生</Button>
-              </form>
-            </Card>
-
-            <Card className="md:col-span-2">
-              <h3 className="text-xl font-bold mb-4 text-stone-700 flex items-center gap-2">
-                <BookOpen size={20} className="text-emerald-600"/> 學習資源履歷
-              </h3>
-              
-              <div className="flex gap-2 border-b border-stone-100 mb-6">
-                {['教材', '作業', '測驗'].map(tab => (
-                  <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-1.5 px-4 py-2.5 font-bold transition-all border-b-2 ${activeTab === tab ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-stone-400 hover:text-stone-600'}`}>
-                    {tab === '教材' && <FileText size={16}/>}
-                    {tab === '作業' && <PenTool size={16}/>}
-                    {tab === '測驗' && <CheckSquare size={16}/>}
-                    {tab}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-3">
-                {filteredMaterials.length === 0 ? (
-                  <p className="text-stone-400 text-center py-10">目前尚無{activeTab}發送紀錄</p>
-                ) : (
-                  filteredMaterials.map(mat => (
-                    <div key={mat.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-stone-50 border border-stone-100 rounded-2xl hover:border-emerald-200 transition gap-4">
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 bg-white rounded-lg shadow-sm">
-                          {getIconForType(mat.type)}
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-stone-800">{mat.title}</h4>
-                          <div className="text-xs text-stone-400 mt-1">
-                            建立於 {new Date(mat.createdAt).toLocaleDateString('zh-TW')}
-                          </div>
-                          {mat.deadline && (
-                            <div className="text-xs text-rose-500 font-bold mt-1 flex items-center gap-1">
-                              <Clock size={12} /> 期限：{new Date(mat.deadline).toLocaleDateString('zh-TW')}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <a href={mat.url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-white border border-stone-200 text-stone-600 hover:text-emerald-600 hover:border-emerald-300 rounded-xl text-sm font-medium transition">
-                          開啟連結
-                        </a>
-                        <button onClick={() => handleDeleteMaterial(mat.id)} className="p-2 text-stone-400 hover:text-rose-500 bg-white border border-stone-200 rounded-xl transition">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </Card>
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // 5. 學生首頁 (Student Dashboard)
+    // 學生首頁 (Student Dashboard)
     // ==========================================
     function StudentDashboard({ profile, appointments, materials, showDialog, showConfirm, getUsersRef, getApptRef }) {
       const [now, setNow] = useState(new Date());
@@ -1234,14 +1239,25 @@
           return;
         }
         let icsContent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SandyJP Tutor//TW\r\n";
+        icsContent += "BEGIN:VTIMEZONE\r\nTZID:Asia/Taipei\r\nBEGIN:STANDARD\r\nTZOFFSETFROM:+0800\r\nTZOFFSETTO:+0800\r\nTZNAME:CST\r\nDTSTART:19700101T000000\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n";
+        
         futureAppts.forEach(appt => {
           const startDate = new Date(appt.time);
           const endDate = new Date(startDate.getTime() + 50 * 60000);
-          const formatICSDate = (date) => date.toISOString().replace(/[-:]|\.\d\d\d/g, '');
+          
+          const formatICSDate = (date) => {
+            return date.getFullYear().toString() + 
+                   (date.getMonth() + 1).toString().padStart(2, '0') + 
+                   date.getDate().toString().padStart(2, '0') + 'T' + 
+                   date.getHours().toString().padStart(2, '0') + 
+                   date.getMinutes().toString().padStart(2, '0') + 
+                   date.getSeconds().toString().padStart(2, '0');
+          };
+          
           const link = appt.meetLink || appt.zoomLink || '';
           icsContent += "BEGIN:VEVENT\r\n";
-          icsContent += `DTSTART:${formatICSDate(startDate)}\r\n`;
-          icsContent += `DTEND:${formatICSDate(endDate)}\r\n`;
+          icsContent += `DTSTART;TZID=Asia/Taipei:${formatICSDate(startDate)}\r\n`;
+          icsContent += `DTEND;TZID=Asia/Taipei:${formatICSDate(endDate)}\r\n`;
           icsContent += `SUMMARY:【SandyJP】${profile.name}的家教課\r\n`;
           icsContent += `DESCRIPTION:您的日文課要開始囉！\\nGoogle Meet 教室連結：${link}\r\n`;
           icsContent += "END:VEVENT\r\n";
@@ -1284,8 +1300,8 @@
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex justify-between items-end">
             <div>
-              <h2 className="text-3xl font-bold text-stone-800">
-                {getGreeting()}、<span className="text-emerald-700">{profile.name}</span> さん！
+              <h2 className="text-2xl sm:text-3xl font-bold text-stone-800 whitespace-nowrap">
+                {getGreeting()}、<br className="sm:hidden"/><span className="text-emerald-700">{profile.name}</span> さん！
               </h2>
               <p className="text-stone-500 mt-2">今天想學習些什麼呢？</p>
             </div>
@@ -1418,31 +1434,37 @@
                   <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 bg-stone-100 text-stone-600 hover:text-emerald-600 rounded-lg transition"><CalendarIcon size={20} /></button>
 
                   {showCalendar && (
-                    <div className="absolute bottom-full mb-2 right-0 p-4 bg-white border border-stone-200 shadow-xl rounded-2xl z-50 w-72">
-                      <div className="flex justify-between items-center mb-4">
-                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronLeft size={18}/></button>
-                        <span className="font-bold text-stone-700">{viewDate.getFullYear()}年 {viewDate.getMonth() + 1}月</span>
-                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1 hover:bg-stone-100 rounded"><ChevronRight size={18}/></button>
-                      </div>
-                      <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                        {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-stone-400">{d}</div>)}
-                      </div>
-                      <div className="grid grid-cols-7 gap-1 text-center">
-                        {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
-                        {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
-                          const d = i + 1;
-                          const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                          const hasAppt = myAppointments.some(a => a.time.startsWith(currentDateStr));
-                          const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
+                    <>
+                      {/* 手機版半透明遮罩 */}
+                      <div className="fixed inset-0 bg-stone-900/20 z-[90] sm:hidden" onClick={() => setShowCalendar(false)}></div>
+                      
+                      {/* 日曆彈窗 - 手機版改為置中固定，電腦版為相對下拉 */}
+                      <div className="fixed sm:absolute top-1/2 sm:top-full left-1/2 sm:left-auto right-auto sm:right-0 -translate-x-1/2 sm:translate-x-0 -translate-y-1/2 sm:translate-y-0 sm:mt-2 p-5 sm:p-4 bg-white border border-stone-200 shadow-2xl sm:shadow-xl rounded-3xl sm:rounded-2xl z-[100] w-[320px] sm:w-72 max-w-[90vw]">
+                        <div className="flex justify-between items-center mb-4">
+                          <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-2 hover:bg-stone-100 rounded-full transition"><ChevronLeft size={20}/></button>
+                          <span className="font-bold text-stone-700 text-lg sm:text-base">{viewDate.getFullYear()}年 {viewDate.getMonth() + 1}月</span>
+                          <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-2 hover:bg-stone-100 rounded-full transition"><ChevronRight size={20}/></button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                          {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-stone-400">{d}</div>)}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center">
+                          {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`empty-${i}`} />)}
+                          {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+                            const d = i + 1;
+                            const currentDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                            const hasAppt = appointments.some(a => a.time.startsWith(currentDateStr));
+                            const isSelected = isSameDay(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), selectedDate);
 
-                          return (
-                            <button key={d} onClick={() => { setSelectedDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), d)); setFilter('day'); setShowCalendar(false); }} className={`w-8 h-8 mx-auto flex items-center justify-center rounded-full text-sm transition ${isSelected ? 'ring-2 ring-emerald-500' : ''} ${hasAppt ? 'text-emerald-700 font-bold bg-emerald-100 hover:bg-emerald-200' : 'text-stone-700 hover:bg-stone-100'}`}>
-                              {d}
-                            </button>
-                          );
-                        })}
+                            return (
+                              <button key={d} onClick={() => { setSelectedDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), d)); setFilter('day'); setShowCalendar(false); }} className={`w-9 h-9 sm:w-8 sm:h-8 mx-auto flex items-center justify-center rounded-full text-sm transition ${isSelected ? 'ring-2 ring-emerald-500 font-bold' : ''} ${hasAppt ? 'text-emerald-700 font-bold bg-emerald-100 hover:bg-emerald-200' : 'text-stone-700 hover:bg-stone-100'}`}>
+                                {d}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
                 </div>
               </div>
